@@ -58,7 +58,7 @@ import static org.elasticsearch.xpack.inference.services.ServiceUtils.throwUnsup
 public class VoyageAIService extends SenderService<VoyageAIModel> implements RerankingInferenceService {
     public static final String NAME = "voyageai";
 
-    private static final String SERVICE_NAME = "Voyage AI";
+    private static final String SERVICE_NAME = "VoyageAI by MongoDB";
     private static final EnumSet<TaskType> SUPPORTED_TASK_TYPES = EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.RERANK);
     private static final Map<TaskType, ModelCreator<? extends VoyageAIModel>> MODEL_CREATORS = Map.of(
         TaskType.TEXT_EMBEDDING,
@@ -67,27 +67,27 @@ public class VoyageAIService extends SenderService<VoyageAIModel> implements Rer
         new VoyageAIRerankModelCreator()
     );
     private static final Integer DEFAULT_BATCH_SIZE = 7;
-    private static final Map<String, Integer> MODEL_BATCH_SIZES = Map.of(
-        "voyage-multimodal-3",
-        7,
-        "voyage-3-large",
-        7,
-        "voyage-code-3",
-        7,
-        "voyage-3",
-        10,
-        "voyage-3-lite",
-        30,
-        "voyage-finance-2",
-        7,
-        "voyage-law-2",
-        7,
-        "voyage-code-2",
-        7,
-        "voyage-2",
-        72,
-        "voyage-02",
-        72
+    private static final Map<String, Integer> MODEL_BATCH_SIZES = Map.ofEntries(
+        // Current generation
+        Map.entry("voyage-4-large", 7),
+        Map.entry("voyage-4", 10),
+        Map.entry("voyage-4-lite", 30),
+        Map.entry("voyage-4-nano", 30),
+        Map.entry("voyage-code-4", 7),
+        Map.entry("voyage-multimodal-3.5", 7),
+        // Previous generations, still accessible
+        Map.entry("voyage-multimodal-3", 7),
+        Map.entry("voyage-3-large", 7),
+        Map.entry("voyage-3.5", 10),
+        Map.entry("voyage-3.5-lite", 30),
+        Map.entry("voyage-code-3", 7),
+        Map.entry("voyage-3", 10),
+        Map.entry("voyage-3-lite", 30),
+        Map.entry("voyage-finance-2", 7),
+        Map.entry("voyage-law-2", 7),
+        Map.entry("voyage-code-2", 7),
+        Map.entry("voyage-2", 72),
+        Map.entry("voyage-02", 72)
     );
 
     private static final Map<String, Integer> RERANKERS_INPUT_SIZE = Map.of(

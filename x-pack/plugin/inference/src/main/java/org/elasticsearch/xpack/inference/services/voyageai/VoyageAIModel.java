@@ -29,6 +29,14 @@ public abstract class VoyageAIModel extends RateLimitGroupingModel {
 
     static {
         Map<String, String> tempMap = new HashMap<>();
+        // Current generation embedding models
+        tempMap.put("voyage-4-large", "embed_large");
+        tempMap.put("voyage-4", "embed_medium");
+        tempMap.put("voyage-4-lite", "embed_small");
+        tempMap.put("voyage-4-nano", "embed_small");
+        tempMap.put("voyage-code-4", "embed_large");
+        tempMap.put("voyage-multimodal-3.5", "embed_multimodal");
+        // Previous generation embedding models, still accessible
         tempMap.put("voyage-3.5", "embed_medium");
         tempMap.put("voyage-3.5-lite", "embed_small");
         tempMap.put("voyage-multimodal-3", "embed_multimodal");
@@ -39,6 +47,11 @@ public abstract class VoyageAIModel extends RateLimitGroupingModel {
         tempMap.put("voyage-finance-2", "embed_large");
         tempMap.put("voyage-law-2", "embed_large");
         tempMap.put("voyage-code-2", "embed_large");
+        // Rerank models
+        tempMap.put("rerank-3", "rerank_large");
+        tempMap.put("rerank-3-lite", "rerank_small");
+        tempMap.put("rerank-2.5", "rerank_large");
+        tempMap.put("rerank-2.5-lite", "rerank_small");
         tempMap.put("rerank-2", "rerank_large");
         tempMap.put("rerank-2-lite", "rerank_small");
 

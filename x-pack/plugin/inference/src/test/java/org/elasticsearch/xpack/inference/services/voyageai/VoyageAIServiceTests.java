@@ -816,7 +816,10 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             service.infer(model, List.of(""), false, new HashMap<>(), InputType.CLUSTERING, null, listener);
 
             var thrownException = expectThrows(ValidationException.class, () -> listener.actionGet(TEST_REQUEST_TIMEOUT));
-            assertThat(thrownException.getMessage(), is("Validation Failed: 1: Input type [clustering] is not supported for [Voyage AI];"));
+            assertThat(
+                thrownException.getMessage(),
+                is("Validation Failed: 1: Input type [clustering] is not supported for [VoyageAI by MongoDB];")
+            );
 
             verify(factory, times(1)).createSender();
         }
@@ -1409,7 +1412,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             String content = XContentHelper.stripWhitespace("""
                 {
                         "service": "voyageai",
-                        "name": "Voyage AI",
+                        "name": "VoyageAI by MongoDB",
                         "task_types": ["text_embedding", "rerank"],
                         "configurations": {
                             "model_id": {
