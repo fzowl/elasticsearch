@@ -23,6 +23,22 @@ import static org.hamcrest.Matchers.is;
 
 public class VoyageAIEmbeddingsModelTests extends ESTestCase {
 
+    public void testContextualizedEmbeddingsModel_RoutesToContextualizedEndpoint() throws Exception {
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-context-3"), is(true));
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-context-4"), is(true));
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-3-large"), is(false));
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel(null), is(false));
+
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-context-3").toString(),
+            is("https://api.voyageai.com/v1/contextualizedembeddings")
+        );
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large").toString(),
+            is("https://api.voyageai.com/v1/embeddings")
+        );
+    }
+
     public void testOverrideWith_DoesNotOverrideAndModelRemainsEqual_WhenSettingsAreEmpty() {
         var model = createModel("url", "api_key", null, null, "model");
 
