@@ -29,13 +29,32 @@ public class VoyageAIEmbeddingsModelTests extends ESTestCase {
         MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-3-large"), is(false));
         MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel(null), is(false));
 
+        var voyageKey = new SecureString("regular-key".toCharArray());
         MatcherAssert.assertThat(
-            VoyageAIEmbeddingsModel.buildRequestUri("voyage-context-3").toString(),
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-context-3", voyageKey).toString(),
             is("https://api.voyageai.com/v1/contextualizedembeddings")
         );
         MatcherAssert.assertThat(
-            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large").toString(),
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large", voyageKey).toString(),
             is("https://api.voyageai.com/v1/embeddings")
+        );
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large", null).toString(),
+            is("https://api.voyageai.com/v1/embeddings")
+        );
+    }
+
+    public void testBuildRequestUri_RoutesMongoDBApiKeyToMongoDBHost() throws Exception {
+        // MongoDB-issued keys are prefixed with "al-" and must be routed to the MongoDB endpoint, mirroring the
+        // official voyageai-python client's get_default_base_url().
+        var mongoKey = new SecureString("al-secret-key".toCharArray());
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large", mongoKey).toString(),
+            is("https://ai.mongodb.com/v1/embeddings")
+        );
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-context-3", mongoKey).toString(),
+            is("https://ai.mongodb.com/v1/contextualizedembeddings")
         );
     }
 

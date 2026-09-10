@@ -2,6 +2,6 @@ area: Inference
 issues: []
 pr: 2
 summary: Rebrand VoyageAI to "Voyage AI by MongoDB", refresh the supported model
-  lists, and route the voyage-context-* models to the contextualized chunk
-  embeddings API
+  lists, route the voyage-context-* models to the contextualized chunk embeddings
+  API, and redirect MongoDB-issued API keys (al- prefix) to the MongoDB host
 type: enhancement

@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.services.voyageai.rerank;
 
 import org.apache.http.client.utils.URIBuilder;
+import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.inference.ModelConfigurations;
 import org.elasticsearch.inference.ModelSecrets;
@@ -26,7 +27,6 @@ import java.net.URISyntaxException;
 import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.external.request.RequestUtils.buildUri;
-import static org.elasticsearch.xpack.inference.services.voyageai.request.VoyageAIUtils.HOST;
 
 public class VoyageAIRerankModel extends VoyageAIModel {
     public static VoyageAIRerankModel of(VoyageAIRerankModel model, Map<String, Object> taskSettings) {
@@ -47,16 +47,23 @@ public class VoyageAIRerankModel extends VoyageAIModel {
             service,
             VoyageAIRerankServiceSettings.fromMap(serviceSettings, context),
             VoyageAIRerankTaskSettings.fromMap(taskSettings),
-            DefaultSecretSettings.fromMap(secrets, context),
-            buildUri(VoyageAIService.NAME, VoyageAIRerankModel::buildRequestUri)
+            DefaultSecretSettings.fromMap(secrets, context)
         );
     }
 
-    public static URI buildRequestUri() throws URISyntaxException {
+    /**
+     * Builds the rerank request URI. The host is resolved from the API key (see {@link VoyageAIUtils#resolveHost}) so
+     * MongoDB-issued keys route to the MongoDB endpoint.
+     */
+    public static URI buildRequestUri(@Nullable SecureString apiKey) throws URISyntaxException {
         return new URIBuilder().setScheme("https")
-            .setHost(HOST)
+            .setHost(VoyageAIUtils.resolveHost(apiKey))
             .setPathSegments(VoyageAIUtils.VERSION_1, VoyageAIUtils.RERANK_PATH)
             .build();
+    }
+
+    private static SecureString apiKeyOf(@Nullable DefaultSecretSettings secretSettings) {
+        return secretSettings == null ? null : secretSettings.apiKey();
     }
 
     // should only be used for testing
@@ -76,6 +83,23 @@ public class VoyageAIRerankModel extends VoyageAIModel {
         String service,
         VoyageAIRerankServiceSettings serviceSettings,
         VoyageAIRerankTaskSettings taskSettings,
+        @Nullable DefaultSecretSettings secretSettings
+    ) {
+        this(
+            inferenceId,
+            service,
+            serviceSettings,
+            taskSettings,
+            secretSettings,
+            buildUri(VoyageAIService.NAME, () -> buildRequestUri(apiKeyOf(secretSettings)))
+        );
+    }
+
+    private VoyageAIRerankModel(
+        String inferenceId,
+        String service,
+        VoyageAIRerankServiceSettings serviceSettings,
+        VoyageAIRerankTaskSettings taskSettings,
         @Nullable DefaultSecretSettings secretSettings,
         URI uri
     ) {
@@ -87,7 +111,11 @@ public class VoyageAIRerankModel extends VoyageAIModel {
     }
 
     public VoyageAIRerankModel(ModelConfigurations modelConfigurations, ModelSecrets modelSecrets) {
-        super(modelConfigurations, modelSecrets, buildUri(VoyageAIService.NAME, VoyageAIRerankModel::buildRequestUri));
+        super(
+            modelConfigurations,
+            modelSecrets,
+            buildUri(VoyageAIService.NAME, () -> buildRequestUri(apiKeyOf((DefaultSecretSettings) modelSecrets.getSecretSettings())))
+        );
     }
 
     private VoyageAIRerankModel(VoyageAIRerankModel model, VoyageAIRerankTaskSettings taskSettings) {

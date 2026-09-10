@@ -63,13 +63,7 @@ public record VoyageAIContextualizedEmbeddingsRequestEntity(
         VoyageAIEmbeddingsServiceSettings serviceSettings,
         VoyageAIEmbeddingsTaskSettings taskSettings
     ) {
-        return new VoyageAIContextualizedEmbeddingsRequestEntity(
-            List.of(chunks),
-            flatten,
-            inputType,
-            serviceSettings,
-            taskSettings
-        );
+        return new VoyageAIContextualizedEmbeddingsRequestEntity(List.of(chunks), flatten, inputType, serviceSettings, taskSettings);
     }
 
     @Override
