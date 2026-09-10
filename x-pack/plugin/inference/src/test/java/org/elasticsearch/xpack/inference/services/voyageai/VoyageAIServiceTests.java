@@ -117,6 +117,30 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
         }
     }
 
+    public void testParseRequestConfig_RoutesMongoDBApiKeyToMongoDBHost() throws IOException {
+        // A MongoDB-issued API key (prefixed with "al-") must route the endpoint to the MongoDB host, mirroring the
+        // official voyageai-python client's get_default_base_url().
+        try (var service = createInferenceService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                assertThat(model, instanceOf(VoyageAIEmbeddingsModel.class));
+
+                var embeddingsModel = (VoyageAIEmbeddingsModel) model;
+                assertThat(embeddingsModel.uri().toString(), is("https://ai.mongodb.com/v1/embeddings"));
+            }, e -> fail("Model parsing should have succeeded " + e.getMessage()));
+
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.TEXT_EMBEDDING,
+                getRequestConfigMap(
+                    VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(InputType.INGEST),
+                    getSecretSettingsMap("al-mongodb-key")
+                ),
+                modelListener
+            );
+        }
+    }
+
     public void testParseRequestConfig_CreatesAVoyageAIEmbeddingsModelWhenChunkingSettingsProvided() throws IOException {
         try (var service = createInferenceService()) {
             ActionListener<Model> modelListener = ActionListener.wrap(model -> {
@@ -816,7 +840,10 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             service.infer(model, List.of(""), false, new HashMap<>(), InputType.CLUSTERING, null, listener);
 
             var thrownException = expectThrows(ValidationException.class, () -> listener.actionGet(TEST_REQUEST_TIMEOUT));
-            assertThat(thrownException.getMessage(), is("Validation Failed: 1: Input type [clustering] is not supported for [Voyage AI];"));
+            assertThat(
+                thrownException.getMessage(),
+                is("Validation Failed: 1: Input type [clustering] is not supported for [Voyage AI by MongoDB];")
+            );
 
             verify(factory, times(1)).createSender();
         }
@@ -1409,7 +1436,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             String content = XContentHelper.stripWhitespace("""
                 {
                         "service": "voyageai",
-                        "name": "Voyage AI",
+                        "name": "Voyage AI by MongoDB",
                         "task_types": ["text_embedding", "rerank"],
                         "configurations": {
                             "model_id": {

@@ -2,7 +2,7 @@
   "inference.put_voyageai": {
     "documentation": {
       "url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-inference-put-voyageai",
-      "description": "Create a VoyageAI inference endpoint"
+      "description": "Create a VoyageAI by MongoDB inference endpoint"
     },
     "stability": "stable",
     "visibility": "public",

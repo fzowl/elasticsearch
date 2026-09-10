@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.services.voyageai.embeddings;
 
 import org.apache.http.client.utils.URIBuilder;
+import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.inference.ChunkingSettings;
 import org.elasticsearch.inference.ModelConfigurations;
@@ -27,7 +28,6 @@ import java.net.URISyntaxException;
 import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.external.request.RequestUtils.buildUri;
-import static org.elasticsearch.xpack.inference.services.voyageai.request.VoyageAIUtils.HOST;
 
 public class VoyageAIEmbeddingsModel extends VoyageAIModel {
     public static VoyageAIEmbeddingsModel of(VoyageAIEmbeddingsModel model, Map<String, Object> taskSettings) {
@@ -50,16 +50,36 @@ public class VoyageAIEmbeddingsModel extends VoyageAIModel {
             VoyageAIEmbeddingsServiceSettings.fromMap(serviceSettings, context),
             VoyageAIEmbeddingsTaskSettings.fromMap(taskSettings),
             chunkingSettings,
-            DefaultSecretSettings.fromMap(secrets, context),
-            buildUri(VoyageAIService.NAME, VoyageAIEmbeddingsModel::buildRequestUri)
+            DefaultSecretSettings.fromMap(secrets, context)
         );
     }
 
-    public static URI buildRequestUri() throws URISyntaxException {
+    /**
+     * Builds the request URI for the given model. The host is resolved from the API key (see
+     * {@link VoyageAIUtils#resolveHost}) so MongoDB-issued keys route to the MongoDB endpoint. Contextualized chunk
+     * embedding models are served from a dedicated endpoint (see {@link VoyageAIUtils#CONTEXTUALIZED_EMBEDDINGS_PATH});
+     * all other embedding models use the standard embeddings endpoint.
+     */
+    public static URI buildRequestUri(String modelId, @Nullable SecureString apiKey) throws URISyntaxException {
         return new URIBuilder().setScheme("https")
-            .setHost(HOST)
-            .setPathSegments(VoyageAIUtils.VERSION_1, VoyageAIUtils.EMBEDDINGS_PATH)
+            .setHost(VoyageAIUtils.resolveHost(apiKey))
+            .setPathSegments(
+                VoyageAIUtils.VERSION_1,
+                isContextualizedEmbeddingsModel(modelId) ? VoyageAIUtils.CONTEXTUALIZED_EMBEDDINGS_PATH : VoyageAIUtils.EMBEDDINGS_PATH
+            )
             .build();
+    }
+
+    private static SecureString apiKeyOf(@Nullable DefaultSecretSettings secretSettings) {
+        return secretSettings == null ? null : secretSettings.apiKey();
+    }
+
+    /**
+     * VoyageAI's contextualized chunk embedding models (the {@code voyage-context-*} family) must be called through the
+     * {@code contextualizedembeddings} API rather than the standard {@code embeddings} API.
+     */
+    public static boolean isContextualizedEmbeddingsModel(String modelId) {
+        return modelId != null && modelId.startsWith("voyage-context");
     }
 
     // should only be used for testing
@@ -81,6 +101,25 @@ public class VoyageAIEmbeddingsModel extends VoyageAIModel {
         VoyageAIEmbeddingsServiceSettings serviceSettings,
         VoyageAIEmbeddingsTaskSettings taskSettings,
         ChunkingSettings chunkingSettings,
+        @Nullable DefaultSecretSettings secretSettings
+    ) {
+        this(
+            inferenceId,
+            service,
+            serviceSettings,
+            taskSettings,
+            chunkingSettings,
+            secretSettings,
+            buildUri(VoyageAIService.NAME, () -> buildRequestUri(serviceSettings.modelId(), apiKeyOf(secretSettings)))
+        );
+    }
+
+    private VoyageAIEmbeddingsModel(
+        String inferenceId,
+        String service,
+        VoyageAIEmbeddingsServiceSettings serviceSettings,
+        VoyageAIEmbeddingsTaskSettings taskSettings,
+        ChunkingSettings chunkingSettings,
         @Nullable DefaultSecretSettings secretSettings,
         URI uri
     ) {
@@ -92,7 +131,17 @@ public class VoyageAIEmbeddingsModel extends VoyageAIModel {
     }
 
     public VoyageAIEmbeddingsModel(ModelConfigurations modelConfigurations, ModelSecrets modelSecrets) {
-        super(modelConfigurations, modelSecrets, buildUri(VoyageAIService.NAME, VoyageAIEmbeddingsModel::buildRequestUri));
+        super(
+            modelConfigurations,
+            modelSecrets,
+            buildUri(
+                VoyageAIService.NAME,
+                () -> buildRequestUri(
+                    ((VoyageAIEmbeddingsServiceSettings) modelConfigurations.getServiceSettings()).modelId(),
+                    apiKeyOf((DefaultSecretSettings) modelSecrets.getSecretSettings())
+                )
+            )
+        );
     }
 
     private VoyageAIEmbeddingsModel(VoyageAIEmbeddingsModel model, VoyageAIEmbeddingsTaskSettings taskSettings) {
@@ -111,6 +160,14 @@ public class VoyageAIEmbeddingsModel extends VoyageAIModel {
     @Override
     public VoyageAIEmbeddingsTaskSettings getTaskSettings() {
         return (VoyageAIEmbeddingsTaskSettings) super.getTaskSettings();
+    }
+
+    /**
+     * @return {@code true} if this model is a contextualized chunk embedding model and must be called through the
+     * contextualized embeddings API.
+     */
+    public boolean isContextualizedEmbeddingsModel() {
+        return isContextualizedEmbeddingsModel(getServiceSettings().modelId());
     }
 
     @Override

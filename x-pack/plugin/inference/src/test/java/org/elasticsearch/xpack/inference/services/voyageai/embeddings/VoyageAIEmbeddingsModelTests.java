@@ -23,6 +23,41 @@ import static org.hamcrest.Matchers.is;
 
 public class VoyageAIEmbeddingsModelTests extends ESTestCase {
 
+    public void testContextualizedEmbeddingsModel_RoutesToContextualizedEndpoint() throws Exception {
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-context-3"), is(true));
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-context-4"), is(true));
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel("voyage-3-large"), is(false));
+        MatcherAssert.assertThat(VoyageAIEmbeddingsModel.isContextualizedEmbeddingsModel(null), is(false));
+
+        var voyageKey = new SecureString("regular-key".toCharArray());
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-context-3", voyageKey).toString(),
+            is("https://api.voyageai.com/v1/contextualizedembeddings")
+        );
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large", voyageKey).toString(),
+            is("https://api.voyageai.com/v1/embeddings")
+        );
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large", null).toString(),
+            is("https://api.voyageai.com/v1/embeddings")
+        );
+    }
+
+    public void testBuildRequestUri_RoutesMongoDBApiKeyToMongoDBHost() throws Exception {
+        // MongoDB-issued keys are prefixed with "al-" and must be routed to the MongoDB endpoint, mirroring the
+        // official voyageai-python client's get_default_base_url().
+        var mongoKey = new SecureString("al-secret-key".toCharArray());
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-3-large", mongoKey).toString(),
+            is("https://ai.mongodb.com/v1/embeddings")
+        );
+        MatcherAssert.assertThat(
+            VoyageAIEmbeddingsModel.buildRequestUri("voyage-context-3", mongoKey).toString(),
+            is("https://ai.mongodb.com/v1/contextualizedembeddings")
+        );
+    }
+
     public void testOverrideWith_DoesNotOverrideAndModelRemainsEqual_WhenSettingsAreEmpty() {
         var model = createModel("url", "api_key", null, null, "model");
 
