@@ -24,11 +24,10 @@ import java.util.Objects;
 
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractRequiredString;
 import static org.elasticsearch.xpack.inference.services.SettingsScope.SERVICE_SETTINGS;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIService.VOYAGE_AI_INTEGRATION_ADDED;
 
 public class VoyageAIRerankServiceSettings extends VoyageAIServiceSettings {
     public static final String NAME = "voyageai_rerank_service_settings";
-
-    private static final TransportVersion VOYAGE_AI_INTEGRATION_ADDED = TransportVersion.fromName("voyage_ai_integration_added");
 
     public static VoyageAIRerankServiceSettings fromMap(Map<String, Object> map, ConfigurationParseContext context) {
         var validationException = new ValidationException();

@@ -10,6 +10,7 @@ package org.elasticsearch.xpack.inference.services.voyageai.response;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
 import org.elasticsearch.inference.InferenceServiceResults;
+import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.XContentFactory;
@@ -19,6 +20,9 @@ import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.core.inference.results.DenseEmbeddingBitResults;
 import org.elasticsearch.xpack.core.inference.results.DenseEmbeddingByteResults;
 import org.elasticsearch.xpack.core.inference.results.DenseEmbeddingFloatResults;
+import org.elasticsearch.xpack.core.inference.results.GenericDenseEmbeddingBitResults;
+import org.elasticsearch.xpack.core.inference.results.GenericDenseEmbeddingByteResults;
+import org.elasticsearch.xpack.core.inference.results.GenericDenseEmbeddingFloatResults;
 import org.elasticsearch.xpack.inference.external.http.HttpResult;
 import org.elasticsearch.xpack.inference.external.request.OutboundRequest;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingType;
@@ -115,6 +119,126 @@ public class VoyageAIEmbeddingsResponseEntity {
     }
 
     /**
+     * The contextualized embeddings API returns, for each input document, a list of embeddings: one for each chunk of the document.
+     */
+    record ContextualInt8Document(Integer index, List<EmbeddingInt8ResultEntry> chunks) {
+        @SuppressWarnings("unchecked")
+        public static final ConstructingObjectParser<ContextualInt8Document, Void> PARSER = new ConstructingObjectParser<>(
+            ContextualInt8Document.class.getSimpleName(),
+            true,
+            args -> new ContextualInt8Document((Integer) args[0], (List<EmbeddingInt8ResultEntry>) args[1])
+        );
+
+        static {
+            PARSER.declareInt(constructorArg(), new ParseField("index"));
+            PARSER.declareObjectArray(constructorArg(), EmbeddingInt8ResultEntry.PARSER::apply, new ParseField("data"));
+        }
+    }
+
+    record ContextualInt8Result(List<ContextualInt8Document> documents) {
+        @SuppressWarnings("unchecked")
+        public static final ConstructingObjectParser<ContextualInt8Result, Void> PARSER = new ConstructingObjectParser<>(
+            ContextualInt8Result.class.getSimpleName(),
+            true,
+            args -> new ContextualInt8Result((List<ContextualInt8Document>) args[0])
+        );
+
+        static {
+            PARSER.declareObjectArray(constructorArg(), ContextualInt8Document.PARSER::apply, new ParseField("data"));
+        }
+    }
+
+    record ContextualFloatDocument(Integer index, List<EmbeddingFloatResultEntry> chunks) {
+        @SuppressWarnings("unchecked")
+        public static final ConstructingObjectParser<ContextualFloatDocument, Void> PARSER = new ConstructingObjectParser<>(
+            ContextualFloatDocument.class.getSimpleName(),
+            true,
+            args -> new ContextualFloatDocument((Integer) args[0], (List<EmbeddingFloatResultEntry>) args[1])
+        );
+
+        static {
+            PARSER.declareInt(constructorArg(), new ParseField("index"));
+            PARSER.declareObjectArray(constructorArg(), EmbeddingFloatResultEntry.PARSER::apply, new ParseField("data"));
+        }
+    }
+
+    record ContextualFloatResult(List<ContextualFloatDocument> documents) {
+        @SuppressWarnings("unchecked")
+        public static final ConstructingObjectParser<ContextualFloatResult, Void> PARSER = new ConstructingObjectParser<>(
+            ContextualFloatResult.class.getSimpleName(),
+            true,
+            args -> new ContextualFloatResult((List<ContextualFloatDocument>) args[0])
+        );
+
+        static {
+            PARSER.declareObjectArray(constructorArg(), ContextualFloatDocument.PARSER::apply, new ParseField("data"));
+        }
+    }
+
+    /**
+     * Parses the response of the Voyage AI contextualized embeddings API. A response looks like:
+     *
+     * <pre>
+     * <code>
+     * {
+     *  "object": "list",
+     *  "data": [
+     *      {
+     *          "object": "list",
+     *          "data": [
+     *              { "object": "embedding", "embedding": [ ... ], "index": 0, "text": "Sample text 1" }
+     *          ],
+     *          "index": 0
+     *      }
+     *  ],
+     *  "model": "voyage-context-4",
+     *  "usage": { "total_tokens": 10 }
+     * }
+     * </code>
+     * </pre>
+     *
+     * The inference API returns one embedding for each input, so the response must hold exactly one chunk for each input document.
+     * Inputs sent to the inference API are already chunked and are far smaller than the chunk size sent to Voyage AI, so Voyage AI is not
+     * expected to split them further.
+     */
+    private static InferenceServiceResults parseContextualized(XContentParser jsonParser, VoyageAIEmbeddingType embeddingType)
+        throws IOException {
+        switch (embeddingType) {
+            case FLOAT -> {
+                var result = ContextualFloatResult.PARSER.apply(jsonParser, null);
+                var chunks = result.documents.stream().map(d -> singleChunk(d.index, d.chunks)).toList();
+                return new DenseEmbeddingFloatResults(chunks.stream().map(EmbeddingFloatResultEntry::toInferenceFloatEmbedding).toList());
+            }
+            case INT8 -> {
+                var result = ContextualInt8Result.PARSER.apply(jsonParser, null);
+                var chunks = result.documents.stream().map(d -> singleChunk(d.index, d.chunks)).toList();
+                return new DenseEmbeddingByteResults(chunks.stream().map(EmbeddingInt8ResultEntry::toInferenceByteEmbedding).toList());
+            }
+            case BIT, BINARY -> {
+                var result = ContextualInt8Result.PARSER.apply(jsonParser, null);
+                var chunks = result.documents.stream().map(d -> singleChunk(d.index, d.chunks)).toList();
+                return new DenseEmbeddingBitResults(chunks.stream().map(EmbeddingInt8ResultEntry::toInferenceByteEmbedding).toList());
+            }
+            default -> throw new IllegalArgumentException(
+                Strings.format("Illegal embedding_type value: %s. Supported types are: %s", embeddingType, VALID_EMBEDDING_TYPES_STRING)
+            );
+        }
+    }
+
+    private static <T> T singleChunk(Integer documentIndex, List<T> chunks) {
+        if (chunks.size() != 1) {
+            throw new IllegalStateException(
+                Strings.format(
+                    "Expected one embedding for the input at index [%s] but the contextualized embeddings API returned [%d]",
+                    documentIndex,
+                    chunks.size()
+                )
+            );
+        }
+        return chunks.get(0);
+    }
+
+    /**
      * Parses the VoyageAI json response.
      * For a request like:
      *
@@ -161,9 +285,16 @@ public class VoyageAIEmbeddingsResponseEntity {
      */
     public static InferenceServiceResults fromResponse(OutboundRequest outboundRequest, HttpResult response) throws IOException {
         var parserConfig = XContentParserConfiguration.EMPTY.withDeprecationHandler(LoggingDeprecationHandler.INSTANCE);
-        var embeddingType = ((VoyageAIEmbeddingsRequest) outboundRequest).getServiceSettings().embeddingType();
+        var embeddingsRequest = (VoyageAIEmbeddingsRequest) outboundRequest;
+        var serviceSettings = embeddingsRequest.getServiceSettings();
+        var embeddingType = serviceSettings.embeddingType();
+        // The embedding task returns results in a generic format, as it is not tied to the type of the embeddings
+        var isEmbeddingTask = embeddingsRequest.getTaskType() == TaskType.EMBEDDING;
 
         try (XContentParser jsonParser = XContentFactory.xContent(XContentType.JSON).createParser(parserConfig, response.body())) {
+            if (serviceSettings.isContextual()) {
+                return parseContextualized(jsonParser, embeddingType);
+            }
             switch (embeddingType) {
                 case FLOAT -> {
                     var embeddingResult = EmbeddingFloatResult.PARSER.apply(jsonParser, null);
@@ -171,21 +302,27 @@ public class VoyageAIEmbeddingsResponseEntity {
                     List<DenseEmbeddingFloatResults.Embedding> embeddingList = embeddingResult.entries.stream()
                         .map(EmbeddingFloatResultEntry::toInferenceFloatEmbedding)
                         .toList();
-                    return new DenseEmbeddingFloatResults(embeddingList);
+                    return isEmbeddingTask
+                        ? new GenericDenseEmbeddingFloatResults(embeddingList)
+                        : new DenseEmbeddingFloatResults(embeddingList);
                 }
                 case INT8 -> {
                     var embeddingResult = EmbeddingInt8Result.PARSER.apply(jsonParser, null);
                     List<DenseEmbeddingByteResults.Embedding> embeddingList = embeddingResult.entries.stream()
                         .map(EmbeddingInt8ResultEntry::toInferenceByteEmbedding)
                         .toList();
-                    return new DenseEmbeddingByteResults(embeddingList);
+                    return isEmbeddingTask
+                        ? new GenericDenseEmbeddingByteResults(embeddingList)
+                        : new DenseEmbeddingByteResults(embeddingList);
                 }
                 case BIT, BINARY -> {
                     var embeddingResult = EmbeddingInt8Result.PARSER.apply(jsonParser, null);
                     List<DenseEmbeddingByteResults.Embedding> embeddingList = embeddingResult.entries.stream()
                         .map(EmbeddingInt8ResultEntry::toInferenceByteEmbedding)
                         .toList();
-                    return new DenseEmbeddingBitResults(embeddingList);
+                    return isEmbeddingTask
+                        ? new GenericDenseEmbeddingBitResults(embeddingList)
+                        : new DenseEmbeddingBitResults(embeddingList);
                 }
                 default -> throw new IllegalArgumentException(
                     Strings.format("Illegal embedding_type value: %s. Supported types are: %s", embeddingType, VALID_EMBEDDING_TYPES_STRING)

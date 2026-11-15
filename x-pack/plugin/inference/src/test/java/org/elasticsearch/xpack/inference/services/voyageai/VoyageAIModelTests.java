@@ -8,7 +8,9 @@
 package org.elasticsearch.xpack.inference.services.voyageai;
 
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsModelTests;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsTaskSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankModelTests;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -47,5 +49,34 @@ public class VoyageAIModelTests extends ESTestCase {
         assertThat(rerankModel.getSecretSettings(), notNullValue());
         assertThat(rerankModel.getSecretSettings().apiKey(), notNullValue());
         assertThat(rerankModel.rateLimitGroupingHash(), equalTo(rerankModel.rateLimitGroupingHash()));
+    }
+
+    public void testRateLimitGroupingHash_MultimodalModelsShareAFamily() {
+        var apiKey = "voyage-api-key";
+
+        var multimodal3 = multimodalModel(apiKey, "voyage-multimodal-3");
+        var multimodal35 = multimodalModel(apiKey, "voyage-multimodal-3.5");
+        assertThat(multimodal35.rateLimitGroupingHash(), equalTo(multimodal3.rateLimitGroupingHash()));
+
+        // The multimodal models have their own limits, which are not shared with the text models
+        var textModel = VoyageAIEmbeddingsModelTests.createModel("url", apiKey, null, "voyage-3");
+        assertThat(multimodal35.rateLimitGroupingHash(), not(equalTo(textModel.rateLimitGroupingHash())));
+    }
+
+    public void testUri_ForMultimodalModel_IsTheModelUri() {
+        var model = multimodalModel("voyage-api-key", "voyage-multimodal-3.5");
+
+        assertThat(model.uri().toString(), equalTo("url"));
+    }
+
+    private static VoyageAIEmbeddingsModel multimodalModel(String apiKey, String modelId) {
+        return VoyageAIEmbeddingsModelTests.createMultimodalModel(
+            "url",
+            apiKey,
+            VoyageAIEmbeddingsTaskSettings.EMPTY_SETTINGS,
+            null,
+            null,
+            modelId
+        );
     }
 }

@@ -26,7 +26,6 @@ import java.net.URISyntaxException;
 import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.external.request.RequestUtils.buildUri;
-import static org.elasticsearch.xpack.inference.services.voyageai.request.VoyageAIUtils.HOST;
 
 public class VoyageAIRerankModel extends VoyageAIModel {
     public static VoyageAIRerankModel of(VoyageAIRerankModel model, Map<String, Object> taskSettings) {
@@ -47,14 +46,30 @@ public class VoyageAIRerankModel extends VoyageAIModel {
             service,
             VoyageAIRerankServiceSettings.fromMap(serviceSettings, context),
             VoyageAIRerankTaskSettings.fromMap(taskSettings),
-            DefaultSecretSettings.fromMap(secrets, context),
-            buildUri(VoyageAIService.NAME, VoyageAIRerankModel::buildRequestUri)
+            DefaultSecretSettings.fromMap(secrets, context)
         );
     }
 
-    public static URI buildRequestUri() throws URISyntaxException {
+    private VoyageAIRerankModel(
+        String inferenceId,
+        String service,
+        VoyageAIRerankServiceSettings serviceSettings,
+        VoyageAIRerankTaskSettings taskSettings,
+        @Nullable DefaultSecretSettings secretSettings
+    ) {
+        this(
+            inferenceId,
+            service,
+            serviceSettings,
+            taskSettings,
+            secretSettings,
+            buildUri(VoyageAIService.NAME, () -> buildRequestUri(secretSettings))
+        );
+    }
+
+    public static URI buildRequestUri(@Nullable DefaultSecretSettings secretSettings) throws URISyntaxException {
         return new URIBuilder().setScheme("https")
-            .setHost(HOST)
+            .setHost(VoyageAIUtils.resolveHost(secretSettings == null ? null : secretSettings.apiKey()))
             .setPathSegments(VoyageAIUtils.VERSION_1, VoyageAIUtils.RERANK_PATH)
             .build();
     }
@@ -87,7 +102,7 @@ public class VoyageAIRerankModel extends VoyageAIModel {
     }
 
     public VoyageAIRerankModel(ModelConfigurations modelConfigurations, ModelSecrets modelSecrets) {
-        super(modelConfigurations, modelSecrets, buildUri(VoyageAIService.NAME, VoyageAIRerankModel::buildRequestUri));
+        super(modelConfigurations, modelSecrets, buildUri(VoyageAIService.NAME, () -> buildRequestUri(secretSettingsOf(modelSecrets))));
     }
 
     private VoyageAIRerankModel(VoyageAIRerankModel model, VoyageAIRerankTaskSettings taskSettings) {
@@ -106,7 +121,7 @@ public class VoyageAIRerankModel extends VoyageAIModel {
 
     /**
      * Accepts a visitor to create an executable action. The returned action will not return documents in the response.
-     * @param visitor          Interface for creating {@link ExecutableAction} instances for Voyage AI models.
+     * @param visitor          Interface for creating {@link ExecutableAction} instances for Voyage AI by MongoDB models.
      * @param taskSettings     Settings in the request to override the model's defaults
      * @return the rerank action
      */

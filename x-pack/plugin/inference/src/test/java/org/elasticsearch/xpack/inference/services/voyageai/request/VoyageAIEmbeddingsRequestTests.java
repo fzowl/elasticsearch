@@ -8,7 +8,12 @@
 package org.elasticsearch.xpack.inference.services.voyageai.request;
 
 import org.apache.hc.core5.http.HttpHeaders;
+import org.elasticsearch.inference.DataFormat;
+import org.elasticsearch.inference.DataType;
+import org.elasticsearch.inference.InferenceString;
+import org.elasticsearch.inference.InferenceStringGroup;
 import org.elasticsearch.inference.InputType;
+import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.xpack.inference.InputTypeTests;
 import org.elasticsearch.xpack.inference.external.request.RequestTests;
@@ -25,6 +30,7 @@ import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.external.http.Utils.entityAsMap;
 import static org.elasticsearch.xpack.inference.services.voyageai.request.VoyageAIEmbeddingsRequestEntity.convertInputTypeToString;
+import static org.elasticsearch.xpack.inference.services.voyageai.request.VoyageAIEmbeddingsRequestEntityTests.TEST_IMAGE_DATA_URI;
 import static org.hamcrest.Matchers.is;
 
 public class VoyageAIEmbeddingsRequestTests extends ESTestCase {
@@ -309,7 +315,56 @@ public class VoyageAIEmbeddingsRequestTests extends ESTestCase {
         }
     }
 
+    public void testCreateRequest_Multimodal_UsesTheModelUriAndWritesMultimodalInputs() throws IOException, URISyntaxException {
+        var request = new VoyageAIEmbeddingsRequest(
+            List.of(
+                new InferenceStringGroup(
+                    List.of(InferenceString.ofText("abc"), new InferenceString(DataType.IMAGE, DataFormat.BASE64, TEST_IMAGE_DATA_URI))
+                )
+            ),
+            InputType.INGEST,
+            VoyageAIEmbeddingsModelTests.createMultimodalModel(
+                "url",
+                "secret",
+                VoyageAIEmbeddingsTaskSettings.EMPTY_SETTINGS,
+                null,
+                null,
+                "voyage-multimodal-3.5"
+            )
+        );
+
+        var httpRequest = RequestTests.getHttpRequestSync(request);
+        var httpPost = httpRequest.httpRequest();
+
+        MatcherAssert.assertThat(httpPost.getUri().toString(), is("url"));
+        MatcherAssert.assertThat(httpPost.getLastHeader(HttpHeaders.AUTHORIZATION).getValue(), is("Bearer secret"));
+        MatcherAssert.assertThat(request.getTaskType(), is(TaskType.EMBEDDING));
+        MatcherAssert.assertThat(
+            entityAsMap(httpPost.getBodyText()),
+            is(
+                Map.of(
+                    "inputs",
+                    List.of(
+                        Map.of(
+                            "content",
+                            List.of(
+                                Map.of("type", "text", "text", "abc"),
+                                Map.of("type", "image_base64", "image_base64", TEST_IMAGE_DATA_URI)
+                            )
+                        )
+                    ),
+                    "model",
+                    "voyage-multimodal-3.5",
+                    "input_type",
+                    "document",
+                    "output_dtype",
+                    "float"
+                )
+            )
+        );
+    }
+
     public static VoyageAIEmbeddingsRequest createRequest(List<String> input, InputType inputType, VoyageAIEmbeddingsModel model) {
-        return new VoyageAIEmbeddingsRequest(input, inputType, model);
+        return new VoyageAIEmbeddingsRequest(input.stream().map(InferenceStringGroup::new).toList(), inputType, model);
     }
 }

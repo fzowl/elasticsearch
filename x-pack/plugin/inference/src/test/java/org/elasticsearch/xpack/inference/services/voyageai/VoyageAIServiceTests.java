@@ -20,12 +20,15 @@ import org.elasticsearch.core.Strings;
 import org.elasticsearch.inference.ChunkInferenceInput;
 import org.elasticsearch.inference.ChunkedInference;
 import org.elasticsearch.inference.ChunkingSettings;
+import org.elasticsearch.inference.DataFormat;
 import org.elasticsearch.inference.DataType;
+import org.elasticsearch.inference.EmbeddingRequest;
 import org.elasticsearch.inference.InferenceService;
 import org.elasticsearch.inference.InferenceServiceConfiguration;
 import org.elasticsearch.inference.InferenceServiceConfigurationTests;
 import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.inference.InferenceString;
+import org.elasticsearch.inference.InferenceStringGroup;
 import org.elasticsearch.inference.InputType;
 import org.elasticsearch.inference.Model;
 import org.elasticsearch.inference.ModelConfigurations;
@@ -42,15 +45,18 @@ import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.core.inference.results.ChunkedInferenceEmbedding;
 import org.elasticsearch.xpack.core.inference.results.DenseEmbeddingFloatResults;
+import org.elasticsearch.xpack.core.inference.results.GenericDenseEmbeddingFloatResults;
+import org.elasticsearch.xpack.core.inference.results.GenericDenseEmbeddingFloatResultsTests;
 import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSender;
 import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSenderTests;
 import org.elasticsearch.xpack.inference.services.InferenceServiceTestCase;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingServiceSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingType;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsModelTests;
-import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsServiceSettingsTests;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsTaskSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsTaskSettingsTests;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAITextEmbeddingServiceSettingsTests;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankModel;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankModelTests;
 import org.hamcrest.CoreMatchers;
@@ -74,8 +80,11 @@ import static org.elasticsearch.xpack.inference.external.http.Utils.entityAsMap;
 import static org.elasticsearch.xpack.inference.external.http.Utils.getUrl;
 import static org.elasticsearch.xpack.inference.services.SenderServiceTests.createMockSender;
 import static org.elasticsearch.xpack.inference.services.ServiceComponentsTests.createWithEmptySettings;
+import static org.elasticsearch.xpack.inference.services.ServiceFields.MULTIMODAL_MODEL;
 import static org.elasticsearch.xpack.inference.services.settings.DefaultSecretSettingsTests.getSecretSettingsMap;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIServiceFields.CONTEXTUAL_MODEL;
 import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIServiceFields.TRUNCATION;
+import static org.elasticsearch.xpack.inference.services.voyageai.request.VoyageAIEmbeddingsRequestEntityTests.TEST_IMAGE_DATA_URI;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
@@ -110,7 +119,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
                 INFERENCE_ENTITY_ID_VALUE,
                 TaskType.TEXT_EMBEDDING,
                 getRequestConfigMap(
-                    VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                     VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(InputType.INGEST),
                     getSecretSettingsMap(API_KEY_VALUE)
                 ),
@@ -137,7 +146,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
                 INFERENCE_ENTITY_ID_VALUE,
                 TaskType.TEXT_EMBEDDING,
                 getRequestConfigMap(
-                    VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                     VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(InputType.INGEST),
                     createRandomChunkingSettingsMap(),
                     getSecretSettingsMap(API_KEY_VALUE)
@@ -166,7 +175,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
                 INFERENCE_ENTITY_ID_VALUE,
                 TaskType.TEXT_EMBEDDING,
                 getRequestConfigMap(
-                    VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                     VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(InputType.INGEST),
                     getSecretSettingsMap(API_KEY_VALUE)
                 ),
@@ -193,7 +202,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
                 INFERENCE_ENTITY_ID_VALUE,
                 TaskType.TEXT_EMBEDDING,
                 getRequestConfigMap(
-                    VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                     getSecretSettingsMap(API_KEY_VALUE)
                 ),
                 modelListener
@@ -213,7 +222,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
                 INFERENCE_ENTITY_ID_VALUE,
                 TaskType.SPARSE_EMBEDDING,
                 getRequestConfigMap(
-                    VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                     VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
                     getSecretSettingsMap(API_KEY_VALUE)
                 ),
@@ -232,7 +241,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParseRequestConfig_ThrowsWhenAnExtraKeyExistsInConfig() throws IOException {
         try (var service = createInferenceService()) {
             var config = getRequestConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -248,7 +257,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
 
     public void testParseRequestConfig_ThrowsWhenAnExtraKeyExistsInServiceSettingsMap() throws IOException {
         try (var service = createInferenceService()) {
-            var serviceSettings = VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model");
+            var serviceSettings = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model");
             serviceSettings.put("extra_key", "value");
 
             var config = getRequestConfigMap(
@@ -271,7 +280,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             taskSettingsMap.put("extra_key", "value");
 
             var config = getRequestConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 taskSettingsMap,
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -291,7 +300,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             secretSettingsMap.put("extra_key", "value");
 
             var config = getRequestConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
                 secretSettingsMap
             );
@@ -307,7 +316,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_WithSecrets_CreatesAVoyageAIEmbeddingsModel() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null),
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -335,7 +344,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_WithSecrets_CreatesAVoyageAIEmbeddingsModelWhenChunkingSettingsProvided() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null),
                 createRandomChunkingSettingsMap(),
                 getSecretSettingsMap(API_KEY_VALUE)
@@ -365,7 +374,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_WithSecrets_CreatesAVoyageAIEmbeddingsModelWhenChunkingSettingsNotProvided() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null),
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -394,7 +403,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_WithSecrets_ThrowsErrorTryingToParseInvalidModel() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("oldmodel"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("oldmodel"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -423,7 +432,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_WithSecrets_DoesNotThrowWhenAnExtraKeyExistsInConfig() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(InputType.SEARCH),
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -455,7 +464,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             secretSettingsMap.put("extra_key", "value");
 
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
                 secretSettingsMap
             );
@@ -483,7 +492,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_WithSecrets_NotThrowWhenAnExtraKeyExistsInSecrets() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null),
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -511,7 +520,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
 
     public void testParsePersistedConfig_WithSecrets_NotThrowWhenAnExtraKeyExistsInServiceSettings() throws IOException {
         try (var service = createInferenceService()) {
-            var serviceSettingsMap = VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model");
+            var serviceSettingsMap = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model");
             serviceSettingsMap.put("extra_key", "value");
 
             var persistedConfig = getPersistedConfigMap(
@@ -545,7 +554,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             taskSettingsMap.put("extra_key", "value");
 
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 taskSettingsMap,
                 getSecretSettingsMap(API_KEY_VALUE)
             );
@@ -573,7 +582,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_CreatesAVoyageAIEmbeddingsModel() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null)
             );
 
@@ -600,7 +609,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_CreatesAVoyageAIEmbeddingsModelWhenChunkingSettingsProvided() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null),
                 createRandomChunkingSettingsMap(),
                 null
@@ -630,7 +639,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_CreatesAVoyageAIEmbeddingsModelWhenChunkingSettingsNotProvided() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null)
             );
 
@@ -658,7 +667,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_ThrowsErrorTryingToParseInvalidModel() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model_old"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model_old"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty()
             );
 
@@ -686,7 +695,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_CreatesAVoyageAIEmbeddingsModelWithoutUrl() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMap(null)
             );
 
@@ -712,7 +721,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     public void testParsePersistedConfig_DoesNotThrowWhenAnExtraKeyExistsInConfig() throws IOException {
         try (var service = createInferenceService()) {
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty()
             );
             persistedConfig.config().put("extra_key", "value");
@@ -739,7 +748,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
 
     public void testParsePersistedConfig_NotThrowWhenAnExtraKeyExistsInServiceSettings() throws IOException {
         try (var service = createInferenceService()) {
-            var serviceSettingsMap = VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model");
+            var serviceSettingsMap = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model");
             serviceSettingsMap.put("extra_key", "value");
 
             var persistedConfig = getPersistedConfigMap(
@@ -773,7 +782,7 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             taskSettingsMap.put("extra_key", "value");
 
             var persistedConfig = getPersistedConfigMap(
-                VoyageAIEmbeddingsServiceSettingsTests.buildServiceSettingsMap("model"),
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("model"),
                 taskSettingsMap
             );
 
@@ -818,7 +827,10 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
             service.infer(model, List.of(""), false, new HashMap<>(), InputType.CLUSTERING, null, listener);
 
             var thrownException = expectThrows(ValidationException.class, () -> listener.actionGet(TEST_REQUEST_TIMEOUT));
-            assertThat(thrownException.getMessage(), is("Validation Failed: 1: Input type [clustering] is not supported for [Voyage AI];"));
+            assertThat(
+                thrownException.getMessage(),
+                is("Validation Failed: 1: Input type [clustering] is not supported for [Voyage AI by MongoDB];")
+            );
 
             verify(factory, times(1)).createSender();
         }
@@ -1401,6 +1413,429 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
         }
     }
 
+    public void testParseRequestConfig_EmbeddingTask_CreatesAMultimodalModelByDefault() throws IOException {
+        try (var service = createInferenceService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                assertThat(model, instanceOf(VoyageAIEmbeddingsModel.class));
+
+                var embeddingsModel = (VoyageAIEmbeddingsModel) model;
+                assertThat(embeddingsModel.getTaskType(), is(TaskType.EMBEDDING));
+                assertThat(embeddingsModel.uri().toString(), is("https://api.voyageai.com/v1/multimodalembeddings"));
+                assertThat(embeddingsModel.getServiceSettings(), instanceOf(VoyageAIEmbeddingServiceSettings.class));
+                assertThat(embeddingsModel.getServiceSettings().modelId(), is("voyage-multimodal-3.5"));
+                assertTrue(embeddingsModel.getServiceSettings().isMultimodal());
+                assertThat(embeddingsModel.getSecretSettings().apiKey().toString(), is(API_KEY_VALUE));
+            }, e -> fail("Model parsing should have succeeded " + e.getMessage()));
+
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.EMBEDDING,
+                getRequestConfigMap(
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-multimodal-3.5"),
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(API_KEY_VALUE)
+                ),
+                modelListener
+            );
+        }
+    }
+
+    public void testParseRequestConfig_EmbeddingTask_UsesTheMongoDbHostForAMongoDbKey() throws IOException {
+        try (var service = createInferenceService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                assertThat(((VoyageAIEmbeddingsModel) model).uri().toString(), is("https://ai.mongodb.com/v1/multimodalembeddings"));
+            }, e -> fail("Model parsing should have succeeded " + e.getMessage()));
+
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.EMBEDDING,
+                getRequestConfigMap(
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-multimodal-3"),
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap("al-secret")
+                ),
+                modelListener
+            );
+        }
+    }
+
+    public void testParseRequestConfig_EmbeddingTask_MultimodalModelFalse_UsesTheEmbeddingsEndpoint() throws IOException {
+        try (var service = createInferenceService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                var embeddingsModel = (VoyageAIEmbeddingsModel) model;
+                assertFalse(embeddingsModel.getServiceSettings().isMultimodal());
+                assertThat(embeddingsModel.uri().toString(), is("https://api.voyageai.com/v1/embeddings"));
+            }, e -> fail("Model parsing should have succeeded " + e.getMessage()));
+
+            var serviceSettings = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-4");
+            serviceSettings.put(MULTIMODAL_MODEL, false);
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.EMBEDDING,
+                getRequestConfigMap(
+                    serviceSettings,
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(API_KEY_VALUE)
+                ),
+                modelListener
+            );
+        }
+    }
+
+    public void testParseRequestConfig_EmbeddingTask_ThrowsWhenContextualModelIsSet() throws IOException {
+        try (var service = createInferenceService()) {
+            var serviceSettings = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-multimodal-3.5");
+            serviceSettings.put(CONTEXTUAL_MODEL, true);
+
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.EMBEDDING,
+                getRequestConfigMap(
+                    serviceSettings,
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(API_KEY_VALUE)
+                ),
+                getModelListenerForException(
+                    ElasticsearchStatusException.class,
+                    "Configuration contains settings [{contextual_model=true}] unknown to the [voyageai] service"
+                )
+            );
+        }
+    }
+
+    public void testParseRequestConfig_TextEmbeddingTask_CreatesAContextualModel_WhenContextualModelIsSet() throws IOException {
+        try (var service = createInferenceService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                var embeddingsModel = (VoyageAIEmbeddingsModel) model;
+                assertThat(embeddingsModel.getTaskType(), is(TaskType.TEXT_EMBEDDING));
+                assertTrue(embeddingsModel.getServiceSettings().isContextual());
+                assertThat(embeddingsModel.uri().toString(), is("https://api.voyageai.com/v1/contextualizedembeddings"));
+            }, e -> fail("Model parsing should have succeeded " + e.getMessage()));
+
+            var serviceSettings = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-context-3");
+            serviceSettings.put(CONTEXTUAL_MODEL, true);
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.TEXT_EMBEDDING,
+                getRequestConfigMap(
+                    serviceSettings,
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(API_KEY_VALUE)
+                ),
+                modelListener
+            );
+        }
+    }
+
+    public void testParseRequestConfig_TextEmbeddingTask_DoesNotInferContextualModelFromTheModelId() throws IOException {
+        try (var service = createInferenceService()) {
+            ActionListener<Model> modelListener = ActionListener.wrap(model -> {
+                var embeddingsModel = (VoyageAIEmbeddingsModel) model;
+                assertFalse(embeddingsModel.getServiceSettings().isContextual());
+                assertThat(embeddingsModel.uri().toString(), is("https://api.voyageai.com/v1/embeddings"));
+            }, e -> fail("Model parsing should have succeeded " + e.getMessage()));
+
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.TEXT_EMBEDDING,
+                getRequestConfigMap(
+                    VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-context-3"),
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(API_KEY_VALUE)
+                ),
+                modelListener
+            );
+        }
+    }
+
+    public void testParseRequestConfig_TextEmbeddingTask_ThrowsWhenMultimodalModelIsSet() throws IOException {
+        try (var service = createInferenceService()) {
+            var serviceSettings = VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-multimodal-3.5");
+            serviceSettings.put(MULTIMODAL_MODEL, true);
+
+            service.parseRequestConfig(
+                INFERENCE_ENTITY_ID_VALUE,
+                TaskType.TEXT_EMBEDDING,
+                getRequestConfigMap(
+                    serviceSettings,
+                    VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                    getSecretSettingsMap(API_KEY_VALUE)
+                ),
+                getModelListenerForException(
+                    ElasticsearchStatusException.class,
+                    "Configuration contains settings [{multimodal_model=true}] unknown to the [voyageai] service"
+                )
+            );
+        }
+    }
+
+    public void testParsePersistedConfig_EmbeddingTask_CreatesAMultimodalModel() throws IOException {
+        try (var service = createInferenceService()) {
+            var persistedConfig = getPersistedConfigMap(
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-multimodal-3.5"),
+                VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                getSecretSettingsMap(API_KEY_VALUE)
+            );
+
+            var model = service.parsePersistedConfig(
+                new UnparsedModel(
+                    INFERENCE_ENTITY_ID_VALUE,
+                    TaskType.EMBEDDING,
+                    VoyageAIService.NAME,
+                    persistedConfig.config(),
+                    persistedConfig.secrets()
+                )
+            );
+
+            assertThat(model, instanceOf(VoyageAIEmbeddingsModel.class));
+            var embeddingsModel = (VoyageAIEmbeddingsModel) model;
+            assertThat(embeddingsModel.getTaskType(), is(TaskType.EMBEDDING));
+            assertTrue(embeddingsModel.getServiceSettings().isMultimodal());
+            assertThat(embeddingsModel.uri().toString(), is("https://api.voyageai.com/v1/multimodalembeddings"));
+        }
+    }
+
+    public void testParsePersistedConfig_TextEmbeddingTask_WithoutContextualModel_IsNotContextual() throws IOException {
+        // Endpoints created before the contextual_model setting existed never persisted it
+        try (var service = createInferenceService()) {
+            var persistedConfig = getPersistedConfigMap(
+                VoyageAITextEmbeddingServiceSettingsTests.buildServiceSettingsMap("voyage-context-3"),
+                VoyageAIEmbeddingsTaskSettingsTests.getTaskSettingsMapEmpty(),
+                getSecretSettingsMap(API_KEY_VALUE)
+            );
+
+            var model = (VoyageAIEmbeddingsModel) service.parsePersistedConfig(
+                new UnparsedModel(
+                    INFERENCE_ENTITY_ID_VALUE,
+                    TaskType.TEXT_EMBEDDING,
+                    VoyageAIService.NAME,
+                    persistedConfig.config(),
+                    persistedConfig.secrets()
+                )
+            );
+
+            assertFalse(model.getServiceSettings().isContextual());
+            assertThat(model.uri().toString(), is("https://api.voyageai.com/v1/embeddings"));
+        }
+    }
+
+    public void testEmbeddingInfer_Multimodal_SendsMultimodalRequestAndReturnsGenericResults() throws IOException {
+        var senderFactory = HttpRequestSenderTests.createSenderFactory(threadPool, clientManager);
+
+        try (var service = new VoyageAIService(senderFactory, createWithEmptySettings(threadPool), mockClusterServiceEmpty())) {
+            String responseJson = """
+                {
+                    "object": "list",
+                    "data": [
+                        { "object": "embedding", "embedding": [ 0.123, -0.123 ], "index": 0 },
+                        { "object": "embedding", "embedding": [ 0.223, -0.223 ], "index": 1 }
+                    ],
+                    "model": "voyage-multimodal-3.5",
+                    "usage": { "text_tokens": 5, "image_pixels": 2000000, "total_tokens": 3 }
+                }
+                """;
+            webServer.enqueue(new MockResponse().setResponseCode(200).setBody(responseJson));
+
+            var model = VoyageAIEmbeddingsModelTests.createMultimodalModel(
+                getUrl(webServer),
+                API_KEY_VALUE,
+                VoyageAIEmbeddingsTaskSettings.EMPTY_SETTINGS,
+                null,
+                null,
+                "voyage-multimodal-3.5"
+            );
+            var listener = new TestPlainActionFuture<InferenceServiceResults>();
+            var inputs = List.of(
+                new InferenceStringGroup(
+                    List.of(InferenceString.ofText("abc"), new InferenceString(DataType.IMAGE, DataFormat.BASE64, TEST_IMAGE_DATA_URI))
+                ),
+                new InferenceStringGroup("def")
+            );
+            service.embeddingInfer(model, new EmbeddingRequest(inputs, InputType.INGEST, Map.of()), null, listener);
+
+            var result = listener.actionGet(TEST_REQUEST_TIMEOUT);
+
+            assertThat(result, instanceOf(GenericDenseEmbeddingFloatResults.class));
+            assertThat(
+                result.asMap(),
+                is(
+                    GenericDenseEmbeddingFloatResultsTests.buildExpectationFloat(
+                        List.of(new float[] { 0.123F, -0.123F }, new float[] { 0.223F, -0.223F })
+                    )
+                )
+            );
+
+            assertThat(webServer.requests(), hasSize(1));
+            assertThat(webServer.requests().getFirst().getHeader(HttpHeaders.AUTHORIZATION), equalTo("Bearer secret"));
+            assertThat(
+                entityAsMap(webServer.requests().getFirst().getBody()),
+                is(
+                    Map.of(
+                        "inputs",
+                        List.of(
+                            Map.of(
+                                "content",
+                                List.of(
+                                    Map.of("type", "text", "text", "abc"),
+                                    Map.of("type", "image_base64", "image_base64", TEST_IMAGE_DATA_URI)
+                                )
+                            ),
+                            Map.of("content", List.of(Map.of("type", "text", "text", "def")))
+                        ),
+                        "model",
+                        "voyage-multimodal-3.5",
+                        "input_type",
+                        "document",
+                        "output_dtype",
+                        "float"
+                    )
+                )
+            );
+        }
+    }
+
+    public void testEmbeddingInfer_TextOnlyModel_ReturnsError_ForNonTextInput() throws IOException {
+        var model = VoyageAIEmbeddingsModelTests.createModel(URL_VALUE, API_KEY_VALUE, null, MODEL_ID_VALUE);
+        var inputs = List.of(
+            new InferenceStringGroup("abc"),
+            new InferenceStringGroup(new InferenceString(DataType.IMAGE, DataFormat.BASE64, TEST_IMAGE_DATA_URI))
+        );
+
+        var exception = assertEmbeddingInferFails(model, inputs);
+
+        assertThat(exception.getMessage(), is("Non-text input provided for text-only model"));
+        assertThat(exception.status(), is(RestStatus.BAD_REQUEST));
+    }
+
+    public void testEmbeddingInfer_TextOnlyModel_ReturnsError_ForAnInputWithMultipleItems() throws IOException {
+        var model = VoyageAIEmbeddingsModelTests.createModel(URL_VALUE, API_KEY_VALUE, null, MODEL_ID_VALUE);
+        var inputs = List.of(
+            new InferenceStringGroup("abc"),
+            new InferenceStringGroup(List.of(InferenceString.ofText("def"), InferenceString.ofText("ghi")))
+        );
+
+        var exception = assertEmbeddingInferFails(model, inputs);
+
+        assertThat(
+            exception.getMessage(),
+            is(
+                "Field [content] must contain a single item for a text-only model. "
+                    + "[content] object with multiple items found at $.input.content[1]"
+            )
+        );
+        assertThat(exception.status(), is(RestStatus.BAD_REQUEST));
+    }
+
+    public void testEmbeddingInfer_Multimodal_ReturnsError_ForUnsupportedInputs() throws IOException {
+        var model = VoyageAIEmbeddingsModelTests.createMultimodalModel(
+            URL_VALUE,
+            API_KEY_VALUE,
+            VoyageAIEmbeddingsTaskSettings.EMPTY_SETTINGS,
+            null,
+            null,
+            "voyage-multimodal-3.5"
+        );
+        var unsupportedInputs = List.of(
+            new InferenceString(DataType.IMAGE, DataFormat.URL, "https://example.com/image.jpg"),
+            new InferenceString(DataType.AUDIO, DataFormat.BASE64, TEST_IMAGE_DATA_URI),
+            new InferenceString(DataType.VIDEO, DataFormat.BASE64, TEST_IMAGE_DATA_URI),
+            new InferenceString(DataType.PDF, DataFormat.BASE64, TEST_IMAGE_DATA_URI)
+        );
+        var unsupportedInput = randomFrom(unsupportedInputs);
+
+        var exception = assertEmbeddingInferFails(model, List.of(new InferenceStringGroup(unsupportedInput)));
+
+        assertThat(
+            exception.getMessage(),
+            is(
+                Strings.format(
+                    "The [voyageai] service only supports text and base64 image inputs for embeddings, but received an input of type [%s] "
+                        + "and format [%s]",
+                    unsupportedInput.dataType(),
+                    unsupportedInput.dataFormat()
+                )
+            )
+        );
+        assertThat(exception.status(), is(RestStatus.BAD_REQUEST));
+    }
+
+    public void testEmbeddingInfer_ReturnsError_ForAModelOfAnotherType() throws IOException {
+        var model = VoyageAIRerankModelTests.createModel(API_KEY_VALUE, MODEL_ID_VALUE, null);
+
+        var exception = assertEmbeddingInferFails(model, List.of(new InferenceStringGroup("abc")));
+
+        assertThat(exception.getMessage(), containsString("The internal model was invalid"));
+    }
+
+    private ElasticsearchException assertEmbeddingInferFails(Model model, List<InferenceStringGroup> inputs) throws IOException {
+        var senderFactory = HttpRequestSenderTests.createSenderFactory(threadPool, clientManager);
+        try (var service = new VoyageAIService(senderFactory, createWithEmptySettings(threadPool), mockClusterServiceEmpty())) {
+            var listener = new TestPlainActionFuture<InferenceServiceResults>();
+            service.embeddingInfer(model, new EmbeddingRequest(inputs, InputType.UNSPECIFIED, Map.of()), null, listener);
+
+            var exception = expectThrows(ElasticsearchException.class, () -> listener.actionGet(TEST_REQUEST_TIMEOUT));
+            assertThat(webServer.requests(), hasSize(0));
+            return exception;
+        }
+    }
+
+    public void testSupportsNonTextEmbeddingContentAndMultipleItemsPerContent() throws IOException {
+        try (
+            var service = new VoyageAIService(
+                mock(HttpRequestSender.Factory.class),
+                createWithEmptySettings(threadPool),
+                mockClusterServiceEmpty()
+            )
+        ) {
+            assertTrue(service.supportsNonTextEmbeddingContent());
+            assertFalse(service.requiresSingleInputEmbeddingRequest(mock(Model.class), InferenceString.ofText("abc")));
+            assertThat(service.supportedTaskTypes(), is(EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.RERANK, TaskType.EMBEDDING)));
+        }
+    }
+
+    public void testUpdateModelWithEmbeddingDetails_EmbeddingTask_KeepsTheMultimodalSettings() throws IOException {
+        var model = VoyageAIEmbeddingsModelTests.createMultimodalModel(
+            URL_VALUE,
+            API_KEY_VALUE,
+            VoyageAIEmbeddingsTaskSettings.EMPTY_SETTINGS,
+            null,
+            VoyageAIEmbeddingType.INT8,
+            "voyage-multimodal-3.5"
+        );
+
+        try (var service = createInferenceService()) {
+            var updatedModel = (VoyageAIEmbeddingsModel) service.updateModelWithEmbeddingDetails(model, 1024);
+
+            assertThat(updatedModel.getTaskType(), is(TaskType.EMBEDDING));
+            assertThat(updatedModel.getServiceSettings(), instanceOf(VoyageAIEmbeddingServiceSettings.class));
+            assertTrue(updatedModel.getServiceSettings().isMultimodal());
+            assertThat(updatedModel.getServiceSettings().dimensions(), is(1024));
+            assertThat(updatedModel.getServiceSettings().embeddingType(), is(VoyageAIEmbeddingType.INT8));
+            assertThat(updatedModel.uri(), is(model.uri()));
+        }
+    }
+
+    public void testUpdateModelWithEmbeddingDetails_ContextualModel_KeepsTheContextualSetting() throws IOException {
+        var model = VoyageAIEmbeddingsModelTests.createContextualModel(URL_VALUE, API_KEY_VALUE, "voyage-context-3");
+
+        try (var service = createInferenceService()) {
+            var updatedModel = (VoyageAIEmbeddingsModel) service.updateModelWithEmbeddingDetails(model, 512);
+
+            assertTrue(updatedModel.getServiceSettings().isContextual());
+            assertThat(updatedModel.getServiceSettings().dimensions(), is(512));
+            assertThat(updatedModel.uri(), is(model.uri()));
+        }
+    }
+
+    public void testBuildModelFromConfigAndSecrets_Embedding() throws IOException {
+        var model = createTestModel(TaskType.EMBEDDING);
+        validateModelBuilding(model);
+    }
+
+    public void testBuildModelFromConfigAndSecrets_ContextualTextEmbedding() throws IOException {
+        validateModelBuilding(VoyageAIEmbeddingsModelTests.createContextualModel(URL_VALUE, API_KEY_VALUE, "voyage-context-3"));
+    }
+
     public void testDefaultSimilarity_FloatEmbedding() {
         assertEquals(SimilarityMeasure.COSINE, VoyageAIService.defaultSimilarity(VoyageAIEmbeddingType.FLOAT));
     }
@@ -1415,42 +1850,64 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     @SuppressWarnings("checkstyle:LineLength")
     public void testGetConfiguration() throws Exception {
         try (var service = createInferenceService()) {
-            String content = XContentHelper.stripWhitespace("""
-                {
-                        "service": "voyageai",
-                        "name": "Voyage AI",
-                        "task_types": ["text_embedding", "rerank"],
-                        "configurations": {
-                            "model_id": {
-                                "description": "The name of the model to use for the inference task.",
-                                "label": "Model ID",
-                                "required": true,
-                                "sensitive": false,
-                                "updatable": false,
-                                "type": "str",
-                                "supported_task_types": ["text_embedding", "rerank"]
-                            },
-                            "api_key": {
-                                "description": "API Key for the provider you're connecting to.",
-                                "label": "API Key",
-                                "required": true,
-                                "sensitive": true,
-                                "updatable": true,
-                                "type": "str",
-                                "supported_task_types": ["text_embedding", "rerank"]
-                            },
-                            "rate_limit.requests_per_minute": {
-                                "description": "Minimize the number of rate limit errors.",
-                                "label": "Rate Limit",
-                                "required": false,
-                                "sensitive": false,
-                                "updatable": false,
-                                "type": "int",
-                                "supported_task_types": ["text_embedding", "rerank"]
+            String content = XContentHelper.stripWhitespace(
+                """
+                    {
+                            "service": "voyageai",
+                            "name": "Voyage AI by MongoDB",
+                            "task_types": ["text_embedding", "rerank", "embedding"],
+                            "configurations": {
+                                "model_id": {
+                                    "description": "The name of the model to use for the inference task.",
+                                    "label": "Model ID",
+                                    "required": true,
+                                    "sensitive": false,
+                                    "updatable": false,
+                                    "type": "str",
+                                    "supported_task_types": ["text_embedding", "rerank", "embedding"]
+                                },
+                                "multimodal_model": {
+                                    "description": "Whether the model accepts multimodal inputs, which are sent to the Voyage AI multimodal embeddings API.",
+                                    "label": "Multimodal model",
+                                    "required": false,
+                                    "sensitive": false,
+                                    "updatable": false,
+                                    "default_value": true,
+                                    "type": "bool",
+                                    "supported_task_types": ["embedding"]
+                                },
+                                "contextual_model": {
+                                    "description": "Whether the model is a contextualized embeddings model, such as voyage-context-3, which is served by the Voyage AI contextualized embeddings API.",
+                                    "label": "Contextual model",
+                                    "required": false,
+                                    "sensitive": false,
+                                    "updatable": false,
+                                    "default_value": false,
+                                    "type": "bool",
+                                    "supported_task_types": ["text_embedding"]
+                                },
+                                "api_key": {
+                                    "description": "API Key for the provider you're connecting to.",
+                                    "label": "API Key",
+                                    "required": true,
+                                    "sensitive": true,
+                                    "updatable": true,
+                                    "type": "str",
+                                    "supported_task_types": ["text_embedding", "rerank", "embedding"]
+                                },
+                                "rate_limit.requests_per_minute": {
+                                    "description": "Minimize the number of rate limit errors.",
+                                    "label": "Rate Limit",
+                                    "required": false,
+                                    "sensitive": false,
+                                    "updatable": false,
+                                    "type": "int",
+                                    "supported_task_types": ["text_embedding", "rerank", "embedding"]
+                                }
                             }
                         }
-                    }
-                """);
+                    """
+            );
             InferenceServiceConfiguration configuration = InferenceServiceConfigurationTests.fromXContentBytes(
                 new BytesArray(content),
                 XContentType.JSON
@@ -1566,6 +2023,14 @@ public class VoyageAIServiceTests extends InferenceServiceTestCase {
     private Model createTestModel(TaskType taskType) {
         return switch (taskType) {
             case TEXT_EMBEDDING -> VoyageAIEmbeddingsModelTests.createModel(URL_VALUE, API_KEY_VALUE, null, MODEL_ID_VALUE);
+            case EMBEDDING -> VoyageAIEmbeddingsModelTests.createMultimodalModel(
+                URL_VALUE,
+                API_KEY_VALUE,
+                VoyageAIEmbeddingsTaskSettings.EMPTY_SETTINGS,
+                null,
+                null,
+                MODEL_ID_VALUE
+            );
             case RERANK -> VoyageAIRerankModelTests.createModel(MODEL_ID_VALUE, null);
             default -> throw new IllegalArgumentException("Unsupported task type: " + taskType);
         };

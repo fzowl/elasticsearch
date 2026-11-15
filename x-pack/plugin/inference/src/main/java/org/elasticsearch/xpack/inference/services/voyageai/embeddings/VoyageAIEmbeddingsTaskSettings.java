@@ -25,6 +25,7 @@ import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractOpt
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractOptionalEnum;
 import static org.elasticsearch.xpack.inference.services.SettingsScope.TASK_SETTINGS;
 import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIService.VALID_INPUT_TYPE_VALUES;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIService.VOYAGE_AI_INTEGRATION_ADDED;
 import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIServiceFields.TRUNCATION;
 
 /**
@@ -39,7 +40,6 @@ public class VoyageAIEmbeddingsTaskSettings implements TaskSettings {
     public static final String NAME = "voyageai_embeddings_task_settings";
     public static final VoyageAIEmbeddingsTaskSettings EMPTY_SETTINGS = new VoyageAIEmbeddingsTaskSettings(null, null);
     static final String INPUT_TYPE_FIELD = "input_type";
-    private static final TransportVersion VOYAGE_AI_INTEGRATION_ADDED = TransportVersion.fromName("voyage_ai_integration_added");
 
     public static VoyageAIEmbeddingsTaskSettings fromMap(Map<String, Object> map) {
         if (map == null || map.isEmpty()) {

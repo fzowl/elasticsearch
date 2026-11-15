@@ -29,9 +29,16 @@ public abstract class VoyageAIModel extends RateLimitGroupingModel {
 
     static {
         Map<String, String> tempMap = new HashMap<>();
+        tempMap.put("voyage-4-large", "embed_large");
+        tempMap.put("voyage-4", "embed_medium");
+        tempMap.put("voyage-4-lite", "embed_small");
+        tempMap.put("voyage-code-4", "embed_large");
+        tempMap.put("voyage-context-4", "embed_large");
+        tempMap.put("voyage-context-3", "embed_large");
         tempMap.put("voyage-3.5", "embed_medium");
         tempMap.put("voyage-3.5-lite", "embed_small");
         tempMap.put("voyage-multimodal-3", "embed_multimodal");
+        tempMap.put("voyage-multimodal-3.5", "embed_multimodal");
         tempMap.put("voyage-3-large", "embed_large");
         tempMap.put("voyage-code-3", "embed_large");
         tempMap.put("voyage-3", "embed_medium");
@@ -39,6 +46,10 @@ public abstract class VoyageAIModel extends RateLimitGroupingModel {
         tempMap.put("voyage-finance-2", "embed_large");
         tempMap.put("voyage-law-2", "embed_large");
         tempMap.put("voyage-code-2", "embed_large");
+        tempMap.put("rerank-3", "rerank_large");
+        tempMap.put("rerank-3-lite", "rerank_small");
+        tempMap.put("rerank-2.5", "rerank_large");
+        tempMap.put("rerank-2.5-lite", "rerank_small");
         tempMap.put("rerank-2", "rerank_large");
         tempMap.put("rerank-2-lite", "rerank_small");
 
@@ -77,6 +88,13 @@ public abstract class VoyageAIModel extends RateLimitGroupingModel {
     @Override
     public VoyageAIServiceSettings getServiceSettings() {
         return (VoyageAIServiceSettings) super.getServiceSettings();
+    }
+
+    /**
+     * @return the default secret settings held by the secrets, or null if the secrets are not available
+     */
+    protected static DefaultSecretSettings secretSettingsOf(ModelSecrets secrets) {
+        return secrets == null ? null : (DefaultSecretSettings) secrets.getSecretSettings();
     }
 
     public URI uri() {
