@@ -23,6 +23,7 @@ import java.util.Objects;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractOptionalBoolean;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractOptionalPositiveInteger;
 import static org.elasticsearch.xpack.inference.services.SettingsScope.TASK_SETTINGS;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIService.VOYAGE_AI_INTEGRATION_ADDED;
 import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIServiceFields.TRUNCATION;
 
 /**
@@ -36,8 +37,6 @@ public class VoyageAIRerankTaskSettings implements TaskSettings, TopNProvider {
     public static final String TOP_K_DOCS_ONLY = "top_k";
 
     public static final VoyageAIRerankTaskSettings EMPTY_SETTINGS = new VoyageAIRerankTaskSettings(null, null, null);
-
-    private static final TransportVersion VOYAGE_AI_INTEGRATION_ADDED = TransportVersion.fromName("voyage_ai_integration_added");
 
     public static VoyageAIRerankTaskSettings fromMap(Map<String, Object> map) {
         ValidationException validationException = new ValidationException();

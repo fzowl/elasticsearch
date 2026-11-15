@@ -151,8 +151,9 @@ import org.elasticsearch.xpack.inference.services.tencentcloud.embeddings.Tencen
 import org.elasticsearch.xpack.inference.services.tencentcloud.embeddings.TencentCloudEmbeddingsTaskSettings;
 import org.elasticsearch.xpack.inference.services.tencentcloud.rerank.TencentCloudRerankServiceSettings;
 import org.elasticsearch.xpack.inference.services.tencentcloud.rerank.TencentCloudRerankTaskSettings;
-import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsServiceSettings;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingServiceSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsTaskSettings;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAITextEmbeddingServiceSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankServiceSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankTaskSettings;
 
@@ -1010,8 +1011,15 @@ public class InferenceNamedWriteablesProvider {
         namedWriteables.add(
             new NamedWriteableRegistry.Entry(
                 ServiceSettings.class,
-                VoyageAIEmbeddingsServiceSettings.NAME,
-                VoyageAIEmbeddingsServiceSettings::new
+                VoyageAITextEmbeddingServiceSettings.NAME,
+                VoyageAITextEmbeddingServiceSettings::new
+            )
+        );
+        namedWriteables.add(
+            new NamedWriteableRegistry.Entry(
+                ServiceSettings.class,
+                VoyageAIEmbeddingServiceSettings.NAME,
+                VoyageAIEmbeddingServiceSettings::new
             )
         );
         namedWriteables.add(

@@ -9,4 +9,5 @@ package org.elasticsearch.xpack.inference.services.voyageai;
 
 public class VoyageAIServiceFields {
     public static final String TRUNCATION = "truncation";
+    public static final String CONTEXTUAL_MODEL = "contextual_model";
 }

@@ -29,9 +29,13 @@ import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.Utils.randomSimilarityMeasure;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.DIMENSIONS_SET_BY_USER;
+import static org.elasticsearch.xpack.inference.services.ServiceFields.MULTIMODAL_MODEL;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIService.VOYAGE_AI_CONTEXTUAL_EMBEDDINGS_ADDED;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIServiceFields.CONTEXTUAL_MODEL;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.sameInstance;
 
-public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSerializationTestCase<VoyageAIEmbeddingsServiceSettings> {
+public class VoyageAITextEmbeddingServiceSettingsTests extends AbstractBWCWireSerializationTestCase<VoyageAITextEmbeddingServiceSettings> {
 
     private static final String TEST_MODEL_ID = "test-model-id";
     private static final String INITIAL_TEST_MODEL_ID = "initial-test-model-id";
@@ -53,20 +57,21 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     private static final VoyageAIEmbeddingType INITIAL_TEST_EMBEDDING_TYPE = VoyageAIEmbeddingType.FLOAT;
     private static final VoyageAIEmbeddingType DEFAULT_EMBEDDING_TYPE = VoyageAIEmbeddingType.FLOAT;
 
-    public static VoyageAIEmbeddingsServiceSettings createRandom() {
-        return new VoyageAIEmbeddingsServiceSettings(
+    public static VoyageAITextEmbeddingServiceSettings createRandom() {
+        return new VoyageAITextEmbeddingServiceSettings(
             randomAlphaOfLength(15),
             RateLimitSettingsTests.createRandom(),
             randomFrom(VoyageAIEmbeddingType.values()),
             randomFrom(randomSimilarityMeasure(), null),
             randomFrom(randomIntBetween(128, 256), null),
             randomFrom(randomIntBetween(128, 2048), null),
+            randomBoolean(),
             randomBoolean()
         );
     }
 
     public void testFromMap_Request_AllFields_CreatesSettingsCorrectly() {
-        var serviceSettings = VoyageAIEmbeddingsServiceSettings.fromMap(
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
             buildServiceSettingsMap(
                 TEST_MODEL_ID,
                 TEST_EMBEDDING_TYPE.toString(),
@@ -82,7 +87,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         assertThat(
             serviceSettings,
             is(
-                new VoyageAIEmbeddingsServiceSettings(
+                new VoyageAITextEmbeddingServiceSettings(
                     TEST_MODEL_ID,
                     new RateLimitSettings(TEST_RATE_LIMIT),
                     TEST_EMBEDDING_TYPE,
@@ -97,7 +102,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
 
     public void testFromMap_Persistent_AllFields_CreatesSettingsCorrectly() {
         var dimensionsSetByUser = randomBoolean();
-        var serviceSettings = VoyageAIEmbeddingsServiceSettings.fromMap(
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
             buildServiceSettingsMap(
                 TEST_MODEL_ID,
                 TEST_EMBEDDING_TYPE.toString(),
@@ -113,7 +118,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         assertThat(
             serviceSettings,
             is(
-                new VoyageAIEmbeddingsServiceSettings(
+                new VoyageAITextEmbeddingServiceSettings(
                     TEST_MODEL_ID,
                     new RateLimitSettings(TEST_RATE_LIMIT),
                     TEST_EMBEDDING_TYPE,
@@ -127,7 +132,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     }
 
     public void testFromMap_Request_OnlyMandatoryFields_CreatesSettingsCorrectly() {
-        var serviceSettings = VoyageAIEmbeddingsServiceSettings.fromMap(
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
             buildServiceSettingsMap(TEST_MODEL_ID, null, null, null, null, null, null),
             ConfigurationParseContext.REQUEST
         );
@@ -135,7 +140,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         assertThat(
             serviceSettings,
             is(
-                new VoyageAIEmbeddingsServiceSettings(
+                new VoyageAITextEmbeddingServiceSettings(
                     TEST_MODEL_ID,
                     new RateLimitSettings(DEFAULT_RATE_LIMIT),
                     DEFAULT_EMBEDDING_TYPE,
@@ -150,7 +155,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
 
     public void testFromMap_Persistent_OnlyMandatoryFields_CreatesSettingsCorrectly() {
         var dimensionsSetByUser = randomBoolean();
-        var serviceSettings = VoyageAIEmbeddingsServiceSettings.fromMap(
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
             buildServiceSettingsMap(TEST_MODEL_ID, null, null, null, null, dimensionsSetByUser, null),
             ConfigurationParseContext.PERSISTENT
         );
@@ -158,7 +163,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         assertThat(
             serviceSettings,
             is(
-                new VoyageAIEmbeddingsServiceSettings(
+                new VoyageAITextEmbeddingServiceSettings(
                     TEST_MODEL_ID,
                     new RateLimitSettings(DEFAULT_RATE_LIMIT),
                     DEFAULT_EMBEDDING_TYPE,
@@ -172,7 +177,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     }
 
     public void testFromMap_Persistent_DimensionsSetByUserNotProvided_DefaultsToFalse() {
-        var serviceSettings = VoyageAIEmbeddingsServiceSettings.fromMap(
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
             buildServiceSettingsMap(TEST_MODEL_ID, null, null, null, null, null, null),
             ConfigurationParseContext.PERSISTENT
         );
@@ -180,7 +185,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         assertThat(
             serviceSettings,
             is(
-                new VoyageAIEmbeddingsServiceSettings(
+                new VoyageAITextEmbeddingServiceSettings(
                     TEST_MODEL_ID,
                     new RateLimitSettings(DEFAULT_RATE_LIMIT),
                     DEFAULT_EMBEDDING_TYPE,
@@ -196,7 +201,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     public void testFromMap_Request_DimensionsSetByUser_ThrowsValidationError() {
         var thrownException = expectThrows(
             ValidationException.class,
-            () -> VoyageAIEmbeddingsServiceSettings.fromMap(
+            () -> VoyageAITextEmbeddingServiceSettings.fromMap(
                 buildServiceSettingsMap(TEST_MODEL_ID, null, null, TEST_DIMENSIONS, null, randomBoolean(), null),
                 ConfigurationParseContext.REQUEST
             )
@@ -213,7 +218,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         var invalidSimilarity = "by_size";
         var thrownException = expectThrows(
             ValidationException.class,
-            () -> VoyageAIEmbeddingsServiceSettings.fromMap(
+            () -> VoyageAITextEmbeddingServiceSettings.fromMap(
                 buildServiceSettingsMap(TEST_MODEL_ID, null, invalidSimilarity, null, null, null, null),
                 randomFrom(ConfigurationParseContext.values())
             )
@@ -231,9 +236,298 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         );
     }
 
+    public void testFromMap_ContextualModelNotProvided_DefaultsToFalse() {
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
+            buildServiceSettingsMap(TEST_MODEL_ID),
+            randomFrom(ConfigurationParseContext.values())
+        );
+
+        assertFalse(serviceSettings.isContextual());
+    }
+
+    public void testFromMap_ContextualModel_IsParsed() {
+        var contextualModel = randomBoolean();
+        var context = randomFrom(ConfigurationParseContext.values());
+        var map = buildServiceSettingsMap(TEST_MODEL_ID);
+        map.put(CONTEXTUAL_MODEL, contextualModel);
+
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(map, context);
+
+        assertThat(serviceSettings.isContextual(), is(contextualModel));
+        assertThat(serviceSettings.modelId(), is(TEST_MODEL_ID));
+        assertTrue(map.isEmpty());
+    }
+
+    public void testFromMap_ContextualModel_IsNotInferredFromTheModelId() {
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(
+            buildServiceSettingsMap("voyage-context-3"),
+            randomFrom(ConfigurationParseContext.values())
+        );
+
+        assertFalse(serviceSettings.isContextual());
+    }
+
+    public void testFromMap_ContextualModel_InvalidType_ThrowsValidationError() {
+        var map = buildServiceSettingsMap(TEST_MODEL_ID);
+        map.put(CONTEXTUAL_MODEL, "yes");
+
+        var thrownException = expectThrows(
+            ValidationException.class,
+            () -> VoyageAITextEmbeddingServiceSettings.fromMap(map, randomFrom(ConfigurationParseContext.values()))
+        );
+
+        assertThat(thrownException.validationErrors().size(), is(1));
+        assertThat(
+            thrownException.validationErrors().getFirst(),
+            is("field [contextual_model] is not of the expected type. The value [yes] cannot be converted to a [Boolean]")
+        );
+    }
+
+    public void testFromMap_MultimodalModel_IsNotAccepted() {
+        var map = buildServiceSettingsMap(TEST_MODEL_ID);
+        map.put(MULTIMODAL_MODEL, true);
+
+        var serviceSettings = VoyageAITextEmbeddingServiceSettings.fromMap(map, ConfigurationParseContext.REQUEST);
+
+        // The setting is not consumed, so the service rejects the request as it has unknown settings left over
+        assertThat(map, is(Map.of(MULTIMODAL_MODEL, true)));
+        assertFalse(serviceSettings.isMultimodal());
+    }
+
+    public void testFromMap_InvalidEmbeddingType_ThrowsValidationError() {
+        var invalidEmbeddingType = "not_a_type";
+        var thrownException = expectThrows(
+            ValidationException.class,
+            () -> VoyageAITextEmbeddingServiceSettings.fromMap(
+                buildServiceSettingsMap(TEST_MODEL_ID, invalidEmbeddingType, null, null, null, null, null),
+                randomFrom(ConfigurationParseContext.values())
+            )
+        );
+
+        assertThat(thrownException.validationErrors().size(), is(1));
+        assertThat(
+            thrownException.validationErrors().getFirst(),
+            is(
+                Strings.format(
+                    "[service_settings] Invalid value [%s] received. [embedding_type] must be one of [binary, bit, byte, float, int8]",
+                    invalidEmbeddingType
+                )
+            )
+        );
+    }
+
+    public void testFromMap_InvalidDimensions_ThrowsValidationError() {
+        var invalidDimensions = randomIntBetween(-10, 0);
+        var thrownException = expectThrows(
+            ValidationException.class,
+            () -> VoyageAITextEmbeddingServiceSettings.fromMap(
+                buildServiceSettingsMap(TEST_MODEL_ID, null, null, invalidDimensions, null, null, null),
+                ConfigurationParseContext.PERSISTENT
+            )
+        );
+
+        assertThat(thrownException.validationErrors().size(), is(1));
+        assertThat(
+            thrownException.validationErrors().getFirst(),
+            is(Strings.format("[service_settings] Invalid value [%d]. [dimensions] must be a positive integer", invalidDimensions))
+        );
+    }
+
+    public void testFromMap_InvalidMaxInputTokens_ThrowsValidationError() {
+        var invalidMaxInputTokens = randomIntBetween(-10, 0);
+        var thrownException = expectThrows(
+            ValidationException.class,
+            () -> VoyageAITextEmbeddingServiceSettings.fromMap(
+                buildServiceSettingsMap(TEST_MODEL_ID, null, null, null, invalidMaxInputTokens, null, null),
+                randomFrom(ConfigurationParseContext.values())
+            )
+        );
+
+        assertThat(thrownException.validationErrors().size(), is(1));
+        assertThat(
+            thrownException.validationErrors().getFirst(),
+            is(
+                Strings.format(
+                    "[service_settings] Invalid value [%d]. [max_input_tokens] must be a positive integer",
+                    invalidMaxInputTokens
+                )
+            )
+        );
+    }
+
+    public void testUpdateServiceSettings_KeepsContextualModel() {
+        var originalServiceSettings = new VoyageAITextEmbeddingServiceSettings(
+            INITIAL_TEST_MODEL_ID,
+            new RateLimitSettings(INITIAL_TEST_RATE_LIMIT),
+            INITIAL_TEST_EMBEDDING_TYPE,
+            INITIAL_TEST_SIMILARITY_MEASURE,
+            INITIAL_TEST_DIMENSIONS,
+            INITIAL_TEST_MAX_INPUT_TOKENS,
+            false,
+            true
+        );
+
+        var updateMap = buildServiceSettingsMap(null, null, null, null, TEST_MAX_INPUT_TOKENS, null, TEST_RATE_LIMIT);
+        updateMap.put(CONTEXTUAL_MODEL, false);
+        var updatedServiceSettings = originalServiceSettings.updateServiceSettings(updateMap);
+
+        assertThat(
+            updatedServiceSettings,
+            is(
+                new VoyageAITextEmbeddingServiceSettings(
+                    INITIAL_TEST_MODEL_ID,
+                    new RateLimitSettings(TEST_RATE_LIMIT),
+                    INITIAL_TEST_EMBEDDING_TYPE,
+                    INITIAL_TEST_SIMILARITY_MEASURE,
+                    INITIAL_TEST_DIMENSIONS,
+                    TEST_MAX_INPUT_TOKENS,
+                    false,
+                    true
+                )
+            )
+        );
+    }
+
+    public void testUpdateEmbeddingDetails_SimilarityAndDimensionsAlreadySet_ReturnsExistingSettings() {
+        var existingSettings = new VoyageAITextEmbeddingServiceSettings(
+            TEST_MODEL_ID,
+            new RateLimitSettings(TEST_RATE_LIMIT),
+            TEST_EMBEDDING_TYPE,
+            TEST_SIMILARITY_MEASURE,
+            TEST_DIMENSIONS,
+            TEST_MAX_INPUT_TOKENS,
+            randomBoolean(),
+            randomBoolean()
+        );
+
+        assertThat(
+            BaseVoyageAIEmbeddingsServiceSettings.updateEmbeddingDetails(existingSettings, TEST_DIMENSIONS, TEST_SIMILARITY_MEASURE),
+            sameInstance(existingSettings)
+        );
+    }
+
+    public void testUpdateEmbeddingDetails_DifferentSimilarityAndDimensions_OnlyThoseFieldsAreUpdated() {
+        var dimensionsSetByUser = randomBoolean();
+        var contextualModel = randomBoolean();
+        var existingSettings = new VoyageAITextEmbeddingServiceSettings(
+            TEST_MODEL_ID,
+            new RateLimitSettings(TEST_RATE_LIMIT),
+            TEST_EMBEDDING_TYPE,
+            null,
+            null,
+            TEST_MAX_INPUT_TOKENS,
+            dimensionsSetByUser,
+            contextualModel
+        );
+
+        var updatedSettings = BaseVoyageAIEmbeddingsServiceSettings.updateEmbeddingDetails(
+            existingSettings,
+            TEST_DIMENSIONS,
+            TEST_SIMILARITY_MEASURE
+        );
+
+        assertThat(
+            updatedSettings,
+            is(
+                new VoyageAITextEmbeddingServiceSettings(
+                    TEST_MODEL_ID,
+                    new RateLimitSettings(TEST_RATE_LIMIT),
+                    TEST_EMBEDDING_TYPE,
+                    TEST_SIMILARITY_MEASURE,
+                    TEST_DIMENSIONS,
+                    TEST_MAX_INPUT_TOKENS,
+                    dimensionsSetByUser,
+                    contextualModel
+                )
+            )
+        );
+    }
+
+    public void testToXContent_ContextualModelFalse_DoesNotWriteContextualModel() throws IOException {
+        var serviceSettings = new VoyageAITextEmbeddingServiceSettings(
+            TEST_MODEL_ID,
+            null,
+            TEST_EMBEDDING_TYPE,
+            null,
+            null,
+            null,
+            false,
+            false
+        );
+
+        assertThat(Strings.toString(serviceSettings), is(XContentHelper.stripWhitespace(Strings.format("""
+            {
+                "model_id": "%s",
+                "rate_limit": {
+                    "requests_per_minute": %d
+                },
+                "embedding_type": "%s",
+                "dimensions_set_by_user": false
+            }
+            """, TEST_MODEL_ID, DEFAULT_RATE_LIMIT, TEST_EMBEDDING_TYPE))));
+    }
+
+    public void testToXContent_ContextualModelTrue_WritesContextualModel() throws IOException {
+        var serviceSettings = new VoyageAITextEmbeddingServiceSettings(
+            TEST_MODEL_ID,
+            null,
+            TEST_EMBEDDING_TYPE,
+            null,
+            null,
+            null,
+            false,
+            true
+        );
+
+        assertThat(Strings.toString(serviceSettings), is(XContentHelper.stripWhitespace(Strings.format("""
+            {
+                "model_id": "%s",
+                "rate_limit": {
+                    "requests_per_minute": %d
+                },
+                "embedding_type": "%s",
+                "contextual_model": true,
+                "dimensions_set_by_user": false
+            }
+            """, TEST_MODEL_ID, DEFAULT_RATE_LIMIT, TEST_EMBEDDING_TYPE))));
+    }
+
+    public void testToXContentFragmentOfExposedFields_ContextualModelTrue_WritesContextualModel() throws IOException {
+        var serviceSettings = new VoyageAITextEmbeddingServiceSettings(
+            TEST_MODEL_ID,
+            null,
+            TEST_EMBEDDING_TYPE,
+            null,
+            null,
+            null,
+            true,
+            true
+        );
+
+        XContentBuilder builder = XContentFactory.contentBuilder(XContentType.JSON);
+        builder.startObject();
+        serviceSettings.toXContentFragmentOfExposedFields(builder, null);
+        builder.endObject();
+
+        assertThat(Strings.toString(builder), is(XContentHelper.stripWhitespace(Strings.format("""
+            {
+                "model_id": "%s",
+                "rate_limit": {
+                    "requests_per_minute": %d
+                },
+                "embedding_type": "%s",
+                "contextual_model": true
+            }
+            """, TEST_MODEL_ID, DEFAULT_RATE_LIMIT, TEST_EMBEDDING_TYPE))));
+    }
+
+    public void testTextEmbeddingServiceSettings_IsNeverMultimodal() {
+        assertFalse(createRandom().isMultimodal());
+    }
+
     public void testUpdateServiceSettings_AllFields_OnlyMutableFieldsAreUpdated() {
         var initialDimensionsSetByUser = randomBoolean();
-        var originalServiceSettings = new VoyageAIEmbeddingsServiceSettings(
+        var originalServiceSettings = new VoyageAITextEmbeddingServiceSettings(
             INITIAL_TEST_MODEL_ID,
             new RateLimitSettings(INITIAL_TEST_RATE_LIMIT),
             INITIAL_TEST_EMBEDDING_TYPE,
@@ -258,7 +552,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         assertThat(
             updatedServiceSettings,
             is(
-                new VoyageAIEmbeddingsServiceSettings(
+                new VoyageAITextEmbeddingServiceSettings(
                     INITIAL_TEST_MODEL_ID,
                     new RateLimitSettings(TEST_RATE_LIMIT),
                     INITIAL_TEST_EMBEDDING_TYPE,
@@ -272,7 +566,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     }
 
     public void testUpdateServiceSettings_EmptyMap_DoesNotChangeSettings() {
-        var originalServiceSettings = new VoyageAIEmbeddingsServiceSettings(
+        var originalServiceSettings = new VoyageAITextEmbeddingServiceSettings(
             INITIAL_TEST_MODEL_ID,
             new RateLimitSettings(INITIAL_TEST_RATE_LIMIT),
             INITIAL_TEST_EMBEDDING_TYPE,
@@ -287,7 +581,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
 
     public void testToXContent_WritesAllValues() throws IOException {
         boolean dimensionsSetByUser = randomBoolean();
-        var serviceSettings = new VoyageAIEmbeddingsServiceSettings(
+        var serviceSettings = new VoyageAITextEmbeddingServiceSettings(
             TEST_MODEL_ID,
             new RateLimitSettings(TEST_RATE_LIMIT),
             TEST_EMBEDDING_TYPE,
@@ -334,7 +628,7 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
 
     public void testToXContent_OnlyMandatoryFields_WritesOnlyMandatoryFieldsAndDefaults() throws IOException {
         boolean dimensionsSetByUser = randomBoolean();
-        var serviceSettings = new VoyageAIEmbeddingsServiceSettings(
+        var serviceSettings = new VoyageAITextEmbeddingServiceSettings(
             TEST_MODEL_ID,
             null,
             TEST_EMBEDDING_TYPE,
@@ -361,17 +655,17 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     }
 
     @Override
-    protected Writeable.Reader<VoyageAIEmbeddingsServiceSettings> instanceReader() {
-        return VoyageAIEmbeddingsServiceSettings::new;
+    protected Writeable.Reader<VoyageAITextEmbeddingServiceSettings> instanceReader() {
+        return VoyageAITextEmbeddingServiceSettings::new;
     }
 
     @Override
-    protected VoyageAIEmbeddingsServiceSettings createTestInstance() {
+    protected VoyageAITextEmbeddingServiceSettings createTestInstance() {
         return createRandom();
     }
 
     @Override
-    protected VoyageAIEmbeddingsServiceSettings mutateInstance(VoyageAIEmbeddingsServiceSettings instance) throws IOException {
+    protected VoyageAITextEmbeddingServiceSettings mutateInstance(VoyageAITextEmbeddingServiceSettings instance) throws IOException {
         var modelId = instance.modelId();
         var rateLimitSettings = instance.rateLimitSettings();
         var embeddingType = instance.embeddingType();
@@ -379,7 +673,8 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
         var dimensions = instance.dimensions();
         var maxInputTokens = instance.maxInputTokens();
         var dimensionsSetByUser = instance.dimensionsSetByUser();
-        switch (randomInt(6)) {
+        var contextualModel = instance.isContextual();
+        switch (randomInt(7)) {
             case 0 -> modelId = randomValueOtherThan(modelId, () -> randomAlphaOfLength(15));
             case 1 -> rateLimitSettings = randomValueOtherThan(rateLimitSettings, RateLimitSettingsTests::createRandom);
             case 2 -> embeddingType = randomValueOtherThan(embeddingType, () -> randomFrom(VoyageAIEmbeddingType.values()));
@@ -387,17 +682,19 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
             case 4 -> dimensions = randomValueOtherThan(dimensions, () -> randomFrom(randomIntBetween(1, 2048), null));
             case 5 -> maxInputTokens = randomValueOtherThan(maxInputTokens, () -> randomFrom(randomIntBetween(128, 2048), null));
             case 6 -> dimensionsSetByUser = dimensionsSetByUser == false;
+            case 7 -> contextualModel = contextualModel == false;
             default -> throw new AssertionError("Illegal randomisation branch");
         }
 
-        return new VoyageAIEmbeddingsServiceSettings(
+        return new VoyageAITextEmbeddingServiceSettings(
             modelId,
             rateLimitSettings,
             embeddingType,
             similarity,
             dimensions,
             maxInputTokens,
-            dimensionsSetByUser
+            dimensionsSetByUser,
+            contextualModel
         );
     }
 
@@ -440,10 +737,23 @@ public class VoyageAIEmbeddingsServiceSettingsTests extends AbstractBWCWireSeria
     }
 
     @Override
-    protected VoyageAIEmbeddingsServiceSettings mutateInstanceForVersion(
-        VoyageAIEmbeddingsServiceSettings instance,
+    protected VoyageAITextEmbeddingServiceSettings mutateInstanceForVersion(
+        VoyageAITextEmbeddingServiceSettings instance,
         TransportVersion version
     ) {
+        // Nodes on a version before the contextual_model setting was added do not know about it, so it is read back as false
+        if (version.supports(VOYAGE_AI_CONTEXTUAL_EMBEDDINGS_ADDED) == false && instance.isContextual()) {
+            return new VoyageAITextEmbeddingServiceSettings(
+                instance.modelId(),
+                instance.rateLimitSettings(),
+                instance.embeddingType(),
+                instance.similarity(),
+                instance.dimensions(),
+                instance.maxInputTokens(),
+                instance.dimensionsSetByUser(),
+                false
+            );
+        }
         return instance;
     }
 }

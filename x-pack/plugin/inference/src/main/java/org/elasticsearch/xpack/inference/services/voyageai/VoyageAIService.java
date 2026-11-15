@@ -7,17 +7,25 @@
 
 package org.elasticsearch.xpack.inference.services.voyageai;
 
+import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.TransportVersion;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.ValidationException;
 import org.elasticsearch.common.util.LazyInitializable;
+import org.elasticsearch.core.Strings;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.ChunkInferenceInput;
 import org.elasticsearch.inference.ChunkedInference;
+import org.elasticsearch.inference.DataFormat;
+import org.elasticsearch.inference.DataType;
+import org.elasticsearch.inference.EmbeddingInferenceService;
+import org.elasticsearch.inference.EmbeddingRequest;
 import org.elasticsearch.inference.InferenceServiceConfiguration;
 import org.elasticsearch.inference.InferenceServiceExtension;
 import org.elasticsearch.inference.InferenceServiceResults;
+import org.elasticsearch.inference.InferenceString;
+import org.elasticsearch.inference.InferenceStringGroup;
 import org.elasticsearch.inference.InputType;
 import org.elasticsearch.inference.Model;
 import org.elasticsearch.inference.RerankRequest;
@@ -26,7 +34,9 @@ import org.elasticsearch.inference.SettingsConfiguration;
 import org.elasticsearch.inference.SimilarityMeasure;
 import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.inference.configuration.SettingsConfigurationFieldType;
+import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.core.inference.chunking.EmbeddingRequestChunker;
+import org.elasticsearch.xpack.inference.external.action.ExecutableAction;
 import org.elasticsearch.xpack.inference.external.http.sender.EmbeddingsInput;
 import org.elasticsearch.xpack.inference.external.http.sender.HttpRequestSender;
 import org.elasticsearch.xpack.inference.external.http.sender.InferenceInputs;
@@ -38,10 +48,10 @@ import org.elasticsearch.xpack.inference.services.ServiceUtils;
 import org.elasticsearch.xpack.inference.services.settings.DefaultSecretSettings;
 import org.elasticsearch.xpack.inference.services.settings.RateLimitSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.action.VoyageAIActionCreator;
+import org.elasticsearch.xpack.inference.services.voyageai.embeddings.BaseVoyageAIEmbeddingsServiceSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingType;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsModel;
 import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsModelCreator;
-import org.elasticsearch.xpack.inference.services.voyageai.embeddings.VoyageAIEmbeddingsServiceSettings;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankModel;
 import org.elasticsearch.xpack.inference.services.voyageai.rerank.VoyageAIRerankModelCreator;
 
@@ -53,42 +63,51 @@ import java.util.Objects;
 
 import static org.elasticsearch.xpack.inference.external.http.sender.QueryAndDocsInputs.fromRerankRequest;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.MODEL_ID;
+import static org.elasticsearch.xpack.inference.services.ServiceFields.MULTIMODAL_MODEL;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.createInvalidModelException;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.throwUnsupportedUnifiedCompletionOperation;
+import static org.elasticsearch.xpack.inference.services.voyageai.VoyageAIServiceFields.CONTEXTUAL_MODEL;
 
-public class VoyageAIService extends SenderService<VoyageAIModel> implements RerankingInferenceService {
+public class VoyageAIService extends SenderService<VoyageAIModel> implements EmbeddingInferenceService, RerankingInferenceService {
     public static final String NAME = "voyageai";
 
-    private static final String SERVICE_NAME = "Voyage AI";
-    private static final EnumSet<TaskType> SUPPORTED_TASK_TYPES = EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.RERANK);
+    private static final String SERVICE_NAME = "Voyage AI by MongoDB";
+    private static final EnumSet<TaskType> SUPPORTED_TASK_TYPES = EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.RERANK, TaskType.EMBEDDING);
+    private static final VoyageAIEmbeddingsModelCreator EMBEDDINGS_MODEL_CREATOR = new VoyageAIEmbeddingsModelCreator();
     private static final Map<TaskType, ModelCreator<? extends VoyageAIModel>> MODEL_CREATORS = Map.of(
         TaskType.TEXT_EMBEDDING,
-        new VoyageAIEmbeddingsModelCreator(),
+        EMBEDDINGS_MODEL_CREATOR,
+        TaskType.EMBEDDING,
+        EMBEDDINGS_MODEL_CREATOR,
         TaskType.RERANK,
         new VoyageAIRerankModelCreator()
     );
     private static final Integer DEFAULT_BATCH_SIZE = 7;
-    private static final Map<String, Integer> MODEL_BATCH_SIZES = Map.of(
-        "voyage-multimodal-3",
-        7,
-        "voyage-3-large",
-        7,
-        "voyage-code-3",
-        7,
-        "voyage-3",
-        10,
-        "voyage-3-lite",
-        30,
-        "voyage-finance-2",
-        7,
-        "voyage-law-2",
-        7,
-        "voyage-code-2",
-        7,
-        "voyage-2",
-        72,
-        "voyage-02",
-        72
+    /**
+     * The number of inputs per request, chosen so that a request of maximum-length inputs stays within the maximum number of tokens
+     * Voyage AI accepts per request (1M for the lite models, 320K for voyage-4 and voyage-3.5, 120K for the others).
+     * Voyage AI documents no such limit for voyage-code-4 and the voyage-context models, so they use the default batch size.
+     */
+    private static final Map<String, Integer> MODEL_BATCH_SIZES = Map.ofEntries(
+        Map.entry("voyage-4-large", 7),
+        Map.entry("voyage-4", 10),
+        Map.entry("voyage-4-lite", 30),
+        Map.entry("voyage-code-4", 7),
+        Map.entry("voyage-context-4", 7),
+        Map.entry("voyage-context-3", 7),
+        Map.entry("voyage-multimodal-3", 7),
+        Map.entry("voyage-multimodal-3.5", 7),
+        Map.entry("voyage-3-large", 7),
+        Map.entry("voyage-3.5", 10),
+        Map.entry("voyage-3.5-lite", 30),
+        Map.entry("voyage-code-3", 7),
+        Map.entry("voyage-3", 10),
+        Map.entry("voyage-3-lite", 30),
+        Map.entry("voyage-finance-2", 7),
+        Map.entry("voyage-law-2", 7),
+        Map.entry("voyage-code-2", 7),
+        Map.entry("voyage-2", 72),
+        Map.entry("voyage-02", 72)
     );
 
     private static final Map<String, Integer> RERANKERS_INPUT_SIZE = Map.of(
@@ -109,7 +128,17 @@ public class VoyageAIService extends SenderService<VoyageAIModel> implements Rer
         InputType.INTERNAL_SEARCH
     );
 
-    private static final TransportVersion VOYAGE_AI_INTEGRATION_ADDED = TransportVersion.fromName("voyage_ai_integration_added");
+    public static final TransportVersion VOYAGE_AI_INTEGRATION_ADDED = TransportVersion.fromName("voyage_ai_integration_added");
+    public static final TransportVersion VOYAGE_AI_MULTIMODAL_EMBEDDINGS_ADDED = TransportVersion.fromName(
+        "voyage_ai_multimodal_embeddings_added"
+    );
+    /**
+     * The transport version that added the {@code contextual_model} flag to the {@code text_embedding} service settings. The transport
+     * version tooling only allows one new transport version for each change, so for now this is the multimodal one. When the contextual
+     * embeddings are split out into their own change, replace this with
+     * {@code TransportVersion.fromName("voyage_ai_contextual_embeddings_added")} and run {@code ./gradlew generateTransportVersion}.
+     */
+    public static final TransportVersion VOYAGE_AI_CONTEXTUAL_EMBEDDINGS_ADDED = VOYAGE_AI_MULTIMODAL_EMBEDDINGS_ADDED;
 
     public VoyageAIService(
         HttpRequestSender.Factory factory,
@@ -219,6 +248,84 @@ public class VoyageAIService extends SenderService<VoyageAIModel> implements Rer
         }
     }
 
+    @Override
+    protected void doEmbeddingInfer(
+        Model model,
+        EmbeddingRequest request,
+        TimeValue timeout,
+        ActionListener<InferenceServiceResults> listener
+    ) {
+        if (model instanceof VoyageAIEmbeddingsModel embeddingsModel) {
+            var validationError = validateEmbeddingInputs(embeddingsModel.getServiceSettings().isMultimodal(), request.inputs());
+            if (validationError != null) {
+                listener.onFailure(new ElasticsearchStatusException(validationError, RestStatus.BAD_REQUEST));
+                return;
+            }
+            var actionCreator = new VoyageAIActionCreator(getSender(), getServiceComponents());
+
+            ExecutableAction action = embeddingsModel.accept(actionCreator, request.taskSettings());
+            action.execute(new EmbeddingsInput(request.inputs(), request.inputType()), timeout, listener);
+        } else {
+            listener.onFailure(createInvalidModelException(model));
+        }
+    }
+
+    /**
+     * Voyage AI only supports text and base64 image inputs, and only multimodal models accept anything other than a single text item
+     * for each input.
+     *
+     * @return a description of what is not supported by the model, or {@code null} if the inputs can be sent to it
+     */
+    private static String validateEmbeddingInputs(boolean multimodalModel, List<InferenceStringGroup> inputs) {
+        if (multimodalModel == false) {
+            if (InferenceStringGroup.containsNonTextEntry(inputs)) {
+                return "Non-text input provided for text-only model";
+            }
+            var indexOfMultipleItems = InferenceStringGroup.indexContainingMultipleInferenceStrings(inputs);
+            if (indexOfMultipleItems != null) {
+                return Strings.format(
+                    "Field [%1$s] must contain a single item for a text-only model. "
+                        + "[%1$s] object with multiple items found at $.%2$s.%1$s[%3$d]",
+                    InferenceStringGroup.CONTENT_FIELD,
+                    EmbeddingRequest.INPUT_FIELD,
+                    indexOfMultipleItems
+                );
+            }
+            return null;
+        }
+        for (var inferenceStringGroup : inputs) {
+            for (InferenceString inferenceString : inferenceStringGroup.inferenceStrings()) {
+                var supported = inferenceString.dataType() == DataType.TEXT
+                    || (inferenceString.dataType() == DataType.IMAGE && inferenceString.dataFormat() == DataFormat.BASE64);
+                if (supported == false) {
+                    return Strings.format(
+                        "The [%s] service only supports text and base64 image inputs for embeddings, but received an input of type [%s] "
+                            + "and format [%s]",
+                        NAME,
+                        inferenceString.dataType(),
+                        inferenceString.dataFormat()
+                    );
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public boolean supportsNonTextEmbeddingContent() {
+        return true;
+    }
+
+    @Override
+    protected boolean supportsMultipleItemsPerContent() {
+        return true;
+    }
+
+    @Override
+    public boolean requiresSingleInputEmbeddingRequest(Model model, InferenceString input) {
+        return false;
+    }
+
     private static int getBatchSize(VoyageAIModel model) {
         return MODEL_BATCH_SIZES.getOrDefault(model.getServiceSettings().modelId(), DEFAULT_BATCH_SIZE);
     }
@@ -227,22 +334,20 @@ public class VoyageAIService extends SenderService<VoyageAIModel> implements Rer
     public Model updateModelWithEmbeddingDetails(Model model, int embeddingSize) {
         if (model instanceof VoyageAIEmbeddingsModel embeddingsModel) {
             var serviceSettings = embeddingsModel.getServiceSettings();
-
-            var modelId = serviceSettings.modelId();
-            var rateLimitSettings = serviceSettings.rateLimitSettings();
-            var embeddingType = serviceSettings.embeddingType();
-            var similarityToUse = Objects.requireNonNullElse(serviceSettings.similarity(), defaultSimilarity(embeddingType));
-            var maxInputTokens = serviceSettings.maxInputTokens();
-            var dimensionSetByUser = serviceSettings.dimensionsSetByUser();
-            var updatedServiceSettings = new VoyageAIEmbeddingsServiceSettings(
-                modelId,
-                rateLimitSettings,
-                embeddingType,
-                similarityToUse,
-                embeddingSize,
-                maxInputTokens,
-                dimensionSetByUser
+            var similarityToUse = Objects.requireNonNullElse(
+                serviceSettings.similarity(),
+                defaultSimilarity(serviceSettings.embeddingType())
             );
+
+            var updatedServiceSettings = BaseVoyageAIEmbeddingsServiceSettings.updateEmbeddingDetails(
+                serviceSettings,
+                embeddingSize,
+                similarityToUse
+            );
+
+            if (updatedServiceSettings.equals(serviceSettings)) {
+                return model;
+            }
 
             return new VoyageAIEmbeddingsModel(embeddingsModel, updatedServiceSettings);
         } else {
@@ -296,6 +401,35 @@ public class VoyageAIService extends SenderService<VoyageAIModel> implements Rer
                         .setSensitive(false)
                         .setUpdatable(false)
                         .setType(SettingsConfigurationFieldType.STRING)
+                        .build()
+                );
+
+                configurationMap.put(
+                    MULTIMODAL_MODEL,
+                    new SettingsConfiguration.Builder(EnumSet.of(TaskType.EMBEDDING)).setDescription(
+                        "Whether the model accepts multimodal inputs, which are sent to the Voyage AI multimodal embeddings API."
+                    )
+                        .setLabel("Multimodal model")
+                        .setDefaultValue(true)
+                        .setRequired(false)
+                        .setSensitive(false)
+                        .setUpdatable(false)
+                        .setType(SettingsConfigurationFieldType.BOOLEAN)
+                        .build()
+                );
+
+                configurationMap.put(
+                    CONTEXTUAL_MODEL,
+                    new SettingsConfiguration.Builder(EnumSet.of(TaskType.TEXT_EMBEDDING)).setDescription(
+                        "Whether the model is a contextualized embeddings model, such as voyage-context-3, which is served by the "
+                            + "Voyage AI contextualized embeddings API."
+                    )
+                        .setLabel("Contextual model")
+                        .setDefaultValue(false)
+                        .setRequired(false)
+                        .setSensitive(false)
+                        .setUpdatable(false)
+                        .setType(SettingsConfigurationFieldType.BOOLEAN)
                         .build()
                 );
 
